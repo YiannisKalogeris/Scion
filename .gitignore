@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.eggs/
+*.so
+*.dylib
+target/
+*.vtu
+*.pvd
+.DS_Store
+.idea/
+.vscode/

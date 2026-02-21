@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simulacrum"
+version = "0.1.0"
+description = "A modular computational mechanics library"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Ioannis" }]
+
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "meshio>=5.3",
+    "gmsh>=4.11",
+    "pyvista>=0.42",
+    "vtk>=9.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-benchmark",
+    "ruff",
+    "mypy",
+]
+rust = [
+    "maturin>=1.0",
+]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
