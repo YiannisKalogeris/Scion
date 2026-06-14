@@ -15,12 +15,25 @@ dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
     "meshio>=5.3",
-    "gmsh>=4.11",
     "pyvista>=0.42",
     "vtk>=9.2",
+    "matplotlib>=3.7",
 ]
 
 [project.optional-dependencies]
+ml = [
+    "torch>=2.0",
+]
+jax = [
+    "jax>=0.4",
+    "jaxlib>=0.4",
+    "equinox>=0.11",
+    "optax>=0.2",
+    "diffrax>=0.5",
+]
+meshing = [
+    "gmsh>=4.11",
+]
 dev = [
     "pytest>=7.0",
     "pytest-benchmark",
@@ -34,6 +47,9 @@ docs = [
     "sphinx",
     "sphinx-rtd-theme",
 ]
+all = [
+    "simulacrum[ml,jax,meshing,dev,docs]",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -42,5 +58,5 @@ where = ["src"]
 line-length = 100
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 warn_return_any = true

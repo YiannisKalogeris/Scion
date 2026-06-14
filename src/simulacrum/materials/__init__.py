@@ -6,13 +6,17 @@ interface so they plug into any discretization scheme.
 """
 
 from simulacrum.materials.base import Material
-from simulacrum.materials.linear_elastic import LinearElastic, PlaneStress, PlaneStrain
+from simulacrum.materials.linear_elastic import LinearElastic3D, PlaneStress, PlaneStrain
 from simulacrum.materials.thermal import IsotropicThermal
+from .hyperelastic import NeoHookean
+from .geometric_nonlinear import StVenantKirchhoff
 
 __all__ = [
     "Material",
-    "LinearElastic",
+    "LinearElastic3D",
     "PlaneStress",
     "PlaneStrain",
     "IsotropicThermal",
+    "NeoHookean",
+    "StVenantKirchhoff",
 ]

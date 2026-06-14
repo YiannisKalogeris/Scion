@@ -9,5 +9,6 @@ assembler   Global matrix / vector assembly
 """
 
 from simulacrum.discretization.fem.assembler import FEMAssembler
+from .mass import assemble_mass_matrix
 
-__all__ = ["FEMAssembler"]
+__all__ = ["FEMAssembler", "assemble_mass_matrix"]

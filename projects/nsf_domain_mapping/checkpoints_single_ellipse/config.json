@@ -1,0 +1,22 @@
+{
+  "n_layers": 8,
+  "n_bins": 16,
+  "hidden_dim": 128,
+  "n_hidden": 3,
+  "domain_bounds": [
+    -1.1,
+    1.1
+  ],
+  "codomain_bounds": [
+    -2.5,
+    2.5
+  ],
+  "ellipse_a": 2.0,
+  "ellipse_b": 1.0,
+  "bounds": [
+    -2.5,
+    2.5
+  ],
+  "n_params": 316808,
+  "direction": "square_to_ellipse"
+}
