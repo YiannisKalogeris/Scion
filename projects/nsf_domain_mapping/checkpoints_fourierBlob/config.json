@@ -1,0 +1,81 @@
+{
+  "data": {
+    "n_train": 5,
+    "n_val": 1,
+    "n_test": 1,
+    "image_size": 64,
+    "n_interior_points": 1024,
+    "n_boundary_points": 256,
+    "harmonic_grid_size": 128,
+    "shape_distribution": {
+      "Ellipse": 0.0,
+      "Superellipse": 0.0,
+      "FourierBlob": 1.0,
+      "SmoothPolygon": 0.0,
+      "StarPolygon": 0.0
+    }
+  },
+  "model": {
+    "n_layers": 14,
+    "n_bins": 20,
+    "hidden_dim": 128,
+    "n_hidden": 3,
+    "domain_bounds": [
+      -1.05,
+      1.05
+    ],
+    "codomain_bounds": [
+      -2.5,
+      2.5
+    ],
+    "latent_dim": 3,
+    "image_size": 64
+  },
+  "stage1": {
+    "n_epochs": 8000,
+    "batch_size": 16,
+    "learning_rate_flow": 0.0003,
+    "learning_rate_codes": 0.01,
+    "weight_decay": 0.0001,
+    "grad_clip": 1.0,
+    "loss_weights": {
+      "interior": 1.0,
+      "boundary": 5.0,
+      "logdet_reg": 0.001,
+      "code_reg": 0.001
+    },
+    "checkpoint_every": 1000,
+    "validate_every": 1000,
+    "early_stopping_patience": 50
+  },
+  "stage2": {
+    "n_epochs": 2000,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "weight_decay": 1e-05,
+    "grad_clip": 1.0,
+    "lambda_code": 1.0,
+    "lambda_mapping": 0.1,
+    "lambda_boundary": 0.5,
+    "validate_every": 20,
+    "early_stopping_patience": 30
+  },
+  "fit": {
+    "n_steps": 200,
+    "lr": 0.01,
+    "boundary_weight": 5.0,
+    "code_reg": 0.001
+  },
+  "pipeline": {
+    "generate_data": true,
+    "train_stage1": true,
+    "train_stage2": true,
+    "evaluate": true,
+    "visualize": true,
+    "n_visualizations": 5
+  },
+  "seed": 42,
+  "device": "mps",
+  "model_type": "TwoStage_AutoDecoder_Encoder",
+  "direction": "square_to_shape"
+}

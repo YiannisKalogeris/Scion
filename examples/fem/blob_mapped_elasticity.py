@@ -53,7 +53,7 @@ from simulacrum.discretization.fem.assembler import FEMAssembler
 from simulacrum.discretization.fem.elements import get_element
 from simulacrum.discretization.fem.quadrature import get_quadrature
 from simulacrum.materials.linear_elastic import PlaneStress
-from simulacrum.geometry.sdf import sample_points_in_shape
+from simulacrum.geometry.sdf import sample_points_in_shape, SDFRenderer
 from simulacrum.geometry.harmonic_maps import HarmonicMapSolver
 
 # ── NSF model ──
@@ -61,13 +61,13 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent.parent / "projects" / "nsf_
 sys.path.insert(0, str(PROJECT_DIR / "models"))
 sys.path.insert(0, str(PROJECT_DIR))
 from neural_spline_flow import NeuralSplineFlow
-from Main_nsf import load_inference_model, EncoderMapping
+from Main_nsf import load_inference_model, EncoderMapping, AutoDecoderNSF
 from dataset import DataSample
 
 # ====================================================================
 # CONFIGURATION
 # ====================================================================
-CHECKPOINT_DIR = PROJECT_DIR / "checkpoints_nsf"
+CHECKPOINT_DIR = PROJECT_DIR / "checkpoints_fourierBlob"
 DEVICE = "cpu"   # use "mps" or "cuda" if available
 
 _FIG_DIR = Path(__file__).resolve().parent / "Figures_blob_mapped_elasticity"
@@ -88,6 +88,23 @@ BODY_FORCE = np.array([0.0, -10.0])   # (fx, fy) per unit volume
 # Number of test shapes to solve
 N_TEST_SHAPES = 5
 SEED = 42
+
+# ── Mapping source ──
+# Encoder is the primary path; if its checkpoint is absent we fall back to the stored
+# Stage-1 codes (perfect-z testing). Rename encoder_best.pt (e.g. -> encoder_best_REMOVE.pt)
+# to force the stored-code path, exactly as in Main_nsf.py.
+ENCODER_CKPT = "encoder_best_REMOVE.pt"
+SDF_GRID     = 64              # encoder SDF image resolution (must match training)
+SDF_BOUNDS   = (-2.5, 2.5)     # encoder SDF bounding box   (must match training)
+
+# ── Article comparison (ground-truth) settings ──
+HIFI_TARGET_ELEMS     = 40000        # high-fidelity reference solve ("ground truth")
+HIFI_ETYPE            = "quad4"       # element type for the fine reference mesh
+RELATIVE_L2           = True          # report ||e||_L2 / ||u_ref||_L2 (False => absolute)
+ERROR_CLIM            = (0.0, 0.25)   # fixed colour range for all error maps
+NORMALIZE_ERROR_FIELD = True          # plot |u_method - u_ref| as a fraction of peak |u_ref|;
+                                      # keeps the shared [0,0.25] scale meaningful for the small
+                                      # elasticity displacements (set False for absolute error)
 
 
 # ====================================================================
@@ -126,7 +143,7 @@ class AutoDecoderMappingWrapper:
 def load_autodecoder():
     """Load trained auto-decoder NSF."""
     config_path = CHECKPOINT_DIR / "config.json"
-    model_path = CHECKPOINT_DIR / "best_model.pt"
+    model_path = CHECKPOINT_DIR / "stage1_best.pt"
 
     if not model_path.exists():
         print(f"\n  ERROR: No model at {model_path}")
@@ -345,9 +362,9 @@ def solve_direct_elasticity(shape, mesh):
 
             for qp, qw in zip(qpts, qwts):
                 N, dN_dxi = ref.evaluate(qp)
-                J = dN_dxi.T @ coords
+                J = dN_dxi.T @ coords      # J[i,j] = dx_j/dxi_i  == (dx/dxi)^T
                 detJ = abs(np.linalg.det(J))
-                dN_dx = dN_dxi @ np.linalg.inv(J)
+                dN_dx = dN_dxi @ np.linalg.inv(J.T)
 
                 B = build_B_matrix(dN_dx)
                 ke += (B.T @ C @ B) * detJ * qw
@@ -456,7 +473,7 @@ def assemble_mapped_elasticity(mesh, metric):
             N, dN_dxi = ref.evaluate(qp)
             J_iso = dN_dxi.T @ coords
             detJ_iso = abs(np.linalg.det(J_iso))
-            dN_dy = dN_dxi @ np.linalg.inv(J_iso)
+            dN_dy = dN_dxi @ np.linalg.inv(J_iso.T)
 
             # Physical gradients: dN/dx = dN/dy · F⁻¹
             F_inv = metric["F_inv"][qp_idx]     # (2, 2)
@@ -780,90 +797,171 @@ def check_harmonic_map(shape, shape_idx, grid_size=128, bounds=(-2.5, 2.5)):
     plt.show()
 
 # ====================================================================
-# MAIN (the correct way)
+# GROUND-TRUTH COMPARISON  (high-fidelity reference + cross-mesh errors)
+# Mirrors multi_shape_mapped_poisson.py, adapted for the vector displacement field.
 # ====================================================================
-# def main():
-#     print("=" * 60)
-#     print("MAPPED PLANE-STRESS ELASTICITY ON FOURIER BLOBS")
-#     print("=" * 60)
-#     print(f"  Device:    {DEVICE}")
-#     print(f"  Material:  E={E_YOUNG}, nu={NU_POISSON}")
-#     print(f"  Body force: {BODY_FORCE}")
+def estimate_area(shape, n=400):
+    """Shoelace area of the shape boundary, used to target an element count."""
+    t = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    p = shape(t)
+    x, y = p[:, 0], p[:, 1]
+    return 0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
 
-#     from dataset import DiffeomorphismDataset
-#     train_dataset = DiffeomorphismDataset.load(PROJECT_DIR / "data" / "train.pkl")
 
-#     # Load encoder + flow model
-#     model = load_inference_model(CHECKPOINT_DIR)
+def mesh_shape_to_target(shape, target_elems, etype, n_iter=3):
+    """Mesh a shape at approximately `target_elems` elements by adjusting the gmsh
+    characteristic length, refining the estimate a couple of times."""
+    area = estimate_area(shape)
+    factor = 1.0 if etype == "quad4" else 2.0       # ~2 tris per quad cell at equal lc
+    lc = float(np.sqrt(factor * area / max(target_elems, 1)))
+    mesh = mesh_shape_gmsh(shape, lc=lc, etype=etype)
+    for _ in range(n_iter - 1):
+        n_el = mesh.n_elements
+        if n_el <= 0:
+            break
+        lc *= float(np.sqrt(n_el / target_elems))   # shrink / grow toward the target
+        mesh = mesh_shape_gmsh(shape, lc=lc, etype=etype)
+    return mesh
 
-#     # Generate test shapes
-#     gen = ShapeGenerator(seed=SEED, shape_distribution={"FourierBlob": 1.0})
-#     test_shapes = [gen.generate() for _ in range(N_TEST_SHAPES)]
-#     print(f"\n  Generated {N_TEST_SHAPES} test Fourier blobs")
 
-#     for i, shape in enumerate(test_shapes):
-#         print("\n" + "=" * 60)
-#         print(f"  SHAPE {i+1}/{N_TEST_SHAPES}")
-#         print("=" * 60)
-#         check_harmonic_map(shape, i)
+def _tri_conn(mesh):
+    """Triangulated connectivity (quad4 split into two triangles)."""
+    conn = mesh.element_blocks[0].connectivity
+    if mesh.element_blocks[0].etype == "quad4":
+        return np.vstack([conn[:, [0, 1, 2]], conn[:, [0, 2, 3]]])
+    return conn
 
-#         # Get SDF image for this shape
-#         from simulacrum.geometry.sdf import SDFRenderer
-#         renderer = SDFRenderer(grid_size=64, bounds=(-2.5, 2.5))
-#         image_np = renderer.render(shape) 
-#         image_t = torch.tensor(image_np, dtype=torch.float32, device=DEVICE)
 
-#         # Encoder: image → z → mapping  (single forward pass, no fitting!)
-#         mapping = EncoderMapping(model, image_t)
-#         print(f"  Encoded shape to z (norm={mapping.z.norm():.4f})")
+def _interp_nodal(nodes, tri_conn, u, pts, fill=0.0):
+    """Linearly interpolate a P1 nodal field (scalar or vector) onto arbitrary points,
+    using a Delaunay-based interpolator (robust to the near-degenerate cells the mapped
+    mesh can produce near the boundary). Points outside the convex hull are filled with
+    `fill`. `tri_conn` is unused but kept for call-site compatibility."""
+    from scipy.interpolate import LinearNDInterpolator
+    v = LinearNDInterpolator(nodes, u, fill_value=np.nan)(pts)
+    nanmask = np.isnan(v)
+    mask = nanmask.any(axis=1) if v.ndim > 1 else nanmask
+    if nanmask.any():
+        v = np.where(nanmask, fill, v)
+    return v, mask
 
-#         # Direct solve
-#         print("\n  Direct solve:")
-#         mesh_d = mesh_shape_gmsh(shape, lc=MESH_LC, etype=DIRECT_ETYPE)
-#         plot_mesh_shape(mesh_d, shape, i)
-#         u_d, disp_d, umag_d = solve_direct_elasticity(shape, mesh_d)
 
-#         # Mapped solve
-#         print("\n  Mapped solve:")
-#         mesh_sq, u_m, disp_m, umag_m, x_m = solve_mapped_elasticity(mapping)
+def l2_norm_on_mesh(mesh, nodal):
+    """Proper L2 norm  (∫_Ω field² dx)^{1/2}  of a *scalar* nodal field, via quadrature."""
+    block = mesh.element_blocks[0]
+    ref = get_element(block.etype)
+    qpts, qwts = get_quadrature(block.etype)
+    acc = 0.0
+    for e in range(block.connectivity.shape[0]):
+        enodes = block.connectivity[e]
+        coords = mesh.nodes[enodes]
+        ue = nodal[enodes]
+        for qp, qw in zip(qpts, qwts):
+            N, dN = ref.evaluate(qp)
+            detJ = abs(np.linalg.det(dN.T @ coords))
+            val = N @ ue
+            acc += val * val * detJ * qw
+    return float(np.sqrt(acc))
 
-#         # Mapped solve
-#         print("\n  Mapped solve:")
-#         mesh_sq, u_m, disp_m, umag_m, x_m = solve_mapped_elasticity(mapping)
 
-#         # Boundary check
-#         t = np.linspace(0, 2 * np.pi, 200)
-#         true_bnd = shape(t)
-#         print(f"  True boundary x: [{true_bnd[:,0].min():.3f}, {true_bnd[:,0].max():.3f}]")
-#         print(f"  True boundary y: [{true_bnd[:,1].min():.3f}, {true_bnd[:,1].max():.3f}]")
-#         print(f"  Mapped nodes  x: [{x_m[:,0].min():.3f}, {x_m[:,0].max():.3f}]")
-#         print(f"  Mapped nodes  y: [{x_m[:,1].min():.3f}, {x_m[:,1].max():.3f}]")
+def _vec_l2(mesh, vec):
+    """L2 norm of a vector field:  sqrt( ∫ (v_x² + v_y²) dx )."""
+    return float(np.sqrt(l2_norm_on_mesh(mesh, vec[:, 0]) ** 2
+                         + l2_norm_on_mesh(mesh, vec[:, 1]) ** 2))
 
-#         # Verify shape matches training data
-#         sample = train_dataset[i]
-#         train_bnd = sample.boundary_points
-#         regen_bnd = shape(np.linspace(0, 2*np.pi, len(train_bnd), endpoint=False))
-#         mismatch = np.max(np.abs(train_bnd - regen_bnd))
-#         print(f"  Shape match check: max boundary difference = {mismatch:.6f}")
 
-#         # Compare
-#         print(f"\n  Comparison:")
-#         print(f"    Direct  max |u|: {umag_d.max():.6e}")
-#         print(f"    Mapped  max |u|: {umag_m.max():.6e}")
-#         ratio = umag_m.max() / max(umag_d.max(), 1e-15)
-#         print(f"    Ratio:           {ratio:.4f}")
+def evaluate_errors(mesh_hi, disp_hi, mesh_d, disp_d, x_m, tri_conn_m, disp_m):
+    """Interpolate the direct and pullback *displacement vectors* onto the high-fidelity
+    nodes; return the pointwise error-magnitude fields there and the (relative) L2 errors,
+    measured against the high-fidelity reference by integration over its mesh."""
+    pts = mesh_hi.nodes
+    dd_i, mask_d = _interp_nodal(mesh_d.nodes, _tri_conn(mesh_d), disp_d, pts)
+    dm_i, mask_m = _interp_nodal(x_m, tri_conn_m, disp_m, pts)
 
-#         # Visualise
-#         visualise_elasticity(shape, mesh_d, disp_d, umag_d,
-#                              mesh_sq, disp_m, umag_m, x_m, i)
-#         plot_comparison(umag_d, umag_m, mesh_d, x_m, mesh_sq, shape, i)
+    frac = 100.0 * max(mask_d.mean(), mask_m.mean())
+    if frac > 1.0:
+        print(f"    note: {frac:.1f}% of reference nodes fell outside a coarse mesh "
+              f"(filled with boundary value)")
 
-#     print("\n" + "=" * 60)
-#     print("ALL SHAPES COMPLETE")
-#     print("=" * 60)
+    e_d = dd_i - disp_hi
+    e_m = dm_i - disp_hi
+    err_d = np.linalg.norm(e_d, axis=1)     # |u_direct  - u_ref|  (heatmap field)
+    err_m = np.linalg.norm(e_m, axis=1)     # |u_pullbck - u_ref|
+
+    if NORMALIZE_ERROR_FIELD:
+        scale = float(np.linalg.norm(disp_hi, axis=1).max())
+        if scale > 0:
+            err_d = err_d / scale            # error as a fraction of peak |u_ref|
+            err_m = err_m / scale
+
+    l2_d = _vec_l2(mesh_hi, e_d)
+    l2_m = _vec_l2(mesh_hi, e_m)
+    if RELATIVE_L2:
+        ref = _vec_l2(mesh_hi, disp_hi)
+        if ref > 0:
+            l2_d /= ref
+            l2_m /= ref
+    return err_d, err_m, l2_d, l2_m
+
+
+def _shape_limits(shape, pad=0.12):
+    t = np.linspace(0, 2 * np.pi, 400)
+    bp = shape(t)
+    x0, x1 = bp[:, 0].min(), bp[:, 0].max()
+    y0, y1 = bp[:, 1].min(), bp[:, 1].max()
+    dx, dy = pad * (x1 - x0), pad * (y1 - y0)
+    return bp, (x0 - dx, x1 + dx), (y0 - dy, y1 + dy)
+
+
+def plot_groundtruth_errors(shape, shape_idx, mesh_hi, umag_hi,
+                            err_d, l2_d, etype_d, err_m, l2_m):
+    """High-fidelity ground-truth displacement magnitude, and the error-magnitude maps of
+    the element-matched direct FEM and the pullback FEM over the same domain — same layout
+    and fixed colour scale as the Poisson example."""
+    tg_hi = mtri.Triangulation(mesh_hi.nodes[:, 0], mesh_hi.nodes[:, 1], _tri_conn(mesh_hi))
+    bp, xlim, ylim = _shape_limits(shape)
+    lbl = {"tri3": "Tri3", "quad4": "Quad4"}.get(etype_d, etype_d)
+    metric = "rel. L2" if RELATIVE_L2 else "L2"
+    err_label = "rel. error" if NORMALIZE_ERROR_FIELD else "error"
+
+    # (a) ground-truth displacement magnitude
+    fig, ax = plt.subplots(figsize=(7, 6))
+    tcf = ax.tricontourf(tg_hi, umag_hi, levels=32, cmap="viridis")
+    fig.colorbar(tcf, ax=ax, shrink=0.85)
+    ax.plot(bp[:, 0], bp[:, 1], "k-", lw=1.5)
+    ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_aspect("equal")
+    ax.set_title(r"Ground truth $|u|$ (high-fidelity FEM)")
+    plt.tight_layout()
+    plt.savefig(_FIG_DIR / f"groundtruth_shape_{shape_idx}.png", dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+    # (b) error-magnitude maps, fixed colour scale
+    vmin, vmax = ERROR_CLIM
+    levels = np.linspace(vmin, vmax, 33)         # 32 bands over the fixed range
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    ax = axes[0]
+    tcf = ax.tricontourf(tg_hi, err_d, levels=levels, cmap="hot_r", extend="max")
+    fig.colorbar(tcf, ax=ax, shrink=0.85)
+    ax.plot(bp[:, 0], bp[:, 1], "k-", lw=1.5)
+    ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_aspect("equal")
+    ax.set_title(f"Direct FEM ({lbl}) {err_label} ({metric} = {l2_d:.2e})")
+
+    ax = axes[1]
+    tcf = ax.tricontourf(tg_hi, err_m, levels=levels, cmap="hot_r", extend="max")
+    fig.colorbar(tcf, ax=ax, shrink=0.85)
+    ax.plot(bp[:, 0], bp[:, 1], "k-", lw=1.5)
+    ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_aspect("equal")
+    ax.set_title(f"Pullback FEM {err_label} ({metric} = {l2_m:.2e})")
+
+    plt.tight_layout()
+    plt.savefig(_FIG_DIR / f"errors_shape_{shape_idx}.png", dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"    Saved groundtruth_shape_{shape_idx}.png and errors_shape_{shape_idx}.png")
+
 
 # ====================================================================
-# MAIN hardcoded to use stored codes (bypass encoder)
+# MAIN 
 # ====================================================================
 def main():
     print("=" * 60)
@@ -873,45 +971,64 @@ def main():
     print(f"  Material:  E={E_YOUNG}, nu={NU_POISSON}")
     print(f"  Body force: {BODY_FORCE}")
 
-    from dataset import DiffeomorphismDataset
-    train_dataset = DiffeomorphismDataset.load(PROJECT_DIR / "data" / "train.pkl")
-    
-    # Load auto-decoder with stored codes (bypass encoder)
-    from Main_nsf import create_autodecoder, AutoDecoderMapping
-    from dataset import DiffeomorphismDataset
-    train_dataset = DiffeomorphismDataset.load(PROJECT_DIR / "data" / "train.pkl")
-    model = create_autodecoder(len(train_dataset))
-    model.load_state_dict(torch.load(CHECKPOINT_DIR / "stage1_best.pt", map_location="cpu"))
-    model = model.to("cpu")
-    model.eval()
+    # ── Mapping source: encoder if its checkpoint exists, else stored Stage-1 codes ──
+    use_encoder = (CHECKPOINT_DIR / ENCODER_CKPT).exists()
+    if use_encoder:
+        model = load_inference_model(CHECKPOINT_DIR)
+        renderer = SDFRenderer(grid_size=SDF_GRID, bounds=SDF_BOUNDS)
+        print(f"  Mapping source: ENCODER  (found {ENCODER_CKPT})")
+    else:
+        model = load_autodecoder()
+        print(f"  Mapping source: STORED Stage-1 codes  ({ENCODER_CKPT} not found)")
 
-    # Generate test shapes
-    gen = ShapeGenerator(seed=SEED, shape_distribution={"FourierBlob": 1.0})
-    test_shapes = [gen.generate() for _ in range(N_TEST_SHAPES)]
-    print(f"\n  Generated {N_TEST_SHAPES} test Fourier blobs")
+    # Regenerate the same shapes used in training (identical seed / distribution),
+    # so the stored code index i lines up with shape i.
+    with open(CHECKPOINT_DIR / "config.json") as f:
+        cfg = json.load(f)
+    data_cfg = cfg["data"]
+    n_train = data_cfg["n_train"]
+    gen = ShapeGenerator(
+        seed=cfg.get("seed", SEED),
+        shape_distribution=data_cfg["shape_distribution"],
+    )
+    train_shapes = [gen.generate() for _ in range(n_train)]
+    n_shapes = min(N_TEST_SHAPES, n_train)
+    print(f"\n  Testing on {n_shapes} training shapes")
 
-    for i, shape in enumerate(test_shapes):
+    # Optional: training boundary points for the shape-match sanity check
+    try:
+        from dataset import DiffeomorphismDataset
+        train_dataset = DiffeomorphismDataset.load(PROJECT_DIR / "data" / "train.pkl")
+    except Exception as e:
+        train_dataset = None
+        print(f"  (shape-match check disabled: could not load train.pkl — {e})")
+
+    results = []
+
+    for i in range(n_shapes):
+        shape = train_shapes[i]
         print("\n" + "=" * 60)
-        print(f"  SHAPE {i+1}/{N_TEST_SHAPES}")
+        print(f"  SHAPE {i+1}/{n_shapes}")
         print("=" * 60)
         check_harmonic_map(shape, i)
 
-        # Use stored code directly
-        with torch.no_grad():
-            z = model.latent_codes(torch.tensor(i, device=DEVICE))
-        mapping = AutoDecoderMapping(model, z)
-        print(f"  Stored code z (norm={z.norm():.4f})")
-
+        # Build the mapping for this shape
+        if use_encoder:
+            image_np = renderer.render(shape)
+            image_t = torch.tensor(image_np, dtype=torch.float32, device=DEVICE)
+            mapping = EncoderMapping(model, image_t)
+            print(f"  Encoded shape -> z (norm={mapping.z.norm():.4f})")
+        else:
+            with torch.no_grad():
+                z = model.latent_codes(torch.tensor(i, device=DEVICE))
+            mapping = AutoDecoderMappingWrapper(model, z, DEVICE)
+            print(f"  Stored code z (norm={z.norm():.4f})")
 
         # Direct solve
         print("\n  Direct solve:")
         mesh_d = mesh_shape_gmsh(shape, lc=MESH_LC, etype=DIRECT_ETYPE)
         plot_mesh_shape(mesh_d, shape, i)
         u_d, disp_d, umag_d = solve_direct_elasticity(shape, mesh_d)
-
-        # Mapped solve
-        print("\n  Mapped solve:")
-        mesh_sq, u_m, disp_m, umag_m, x_m = solve_mapped_elasticity(mapping)
 
         # Mapped solve
         print("\n  Mapped solve:")
@@ -926,11 +1043,35 @@ def main():
         print(f"  Mapped nodes  y: [{x_m[:,1].min():.3f}, {x_m[:,1].max():.3f}]")
 
         # Verify shape matches training data
-        sample = train_dataset[i]
-        train_bnd = sample.boundary_points
-        regen_bnd = shape(np.linspace(0, 2*np.pi, len(train_bnd), endpoint=False))
-        mismatch = np.max(np.abs(train_bnd - regen_bnd))
-        print(f"  Shape match check: max boundary difference = {mismatch:.6f}")
+        if train_dataset is not None:
+            sample = train_dataset[i]
+            train_bnd = sample.boundary_points
+            regen_bnd = shape(np.linspace(0, 2*np.pi, len(train_bnd), endpoint=False))
+            mismatch = np.max(np.abs(train_bnd - regen_bnd))
+            print(f"  Shape match check: max boundary difference = {mismatch:.6f}")
+
+        # ── Article comparison vs a high-fidelity ground truth ──
+        # Reference: a much finer direct solve of the same shape.
+        # Baseline:  a direct solve element-matched to the mapped mesh.
+        print("\n  Ground-truth comparison:")
+        mesh_hi = mesh_shape_to_target(shape, HIFI_TARGET_ELEMS, HIFI_ETYPE)
+        _, disp_hi, umag_hi = solve_direct_elasticity(shape, mesh_hi)
+        print(f"    Reference : {mesh_hi.n_elements} {HIFI_ETYPE} elements")
+
+        mesh_dc = mesh_shape_to_target(shape, mesh_sq.n_elements, DIRECT_ETYPE)
+        _, disp_dc, _ = solve_direct_elasticity(shape, mesh_dc)
+        print(f"    Matched   : {mesh_dc.n_elements} {DIRECT_ETYPE} (direct) vs "
+              f"{mesh_sq.n_elements} quad4 (mapped)")
+
+        quad_conn = mesh_sq.element_blocks[0].connectivity
+        tri_conn_m = np.vstack([quad_conn[:, [0, 1, 2]], quad_conn[:, [0, 2, 3]]])
+        err_d, err_m, l2_d, l2_m = evaluate_errors(
+            mesh_hi, disp_hi, mesh_dc, disp_dc, x_m, tri_conn_m, disp_m)
+        tag = "rel L2" if RELATIVE_L2 else "L2"
+        print(f"    {tag} — direct: {l2_d:.3e} | pullback: {l2_m:.3e}")
+
+        plot_groundtruth_errors(shape, i, mesh_hi, umag_hi,
+                                err_d, l2_d, DIRECT_ETYPE, err_m, l2_m)
 
         # Compare
         print(f"\n  Comparison:")
@@ -939,14 +1080,37 @@ def main():
         ratio = umag_m.max() / max(umag_d.max(), 1e-15)
         print(f"    Ratio:           {ratio:.4f}")
 
+        results.append({
+            "shape": i + 1,
+            "direct_max": umag_d.max(),
+            "mapped_max": umag_m.max(),
+            "ratio": ratio,
+            "l2_direct": l2_d,
+            "l2_mapped": l2_m,
+        })
+
         # Visualise
         visualise_elasticity(shape, mesh_d, disp_d, umag_d,
                              mesh_sq, disp_m, umag_m, x_m, i)
         plot_comparison(umag_d, umag_m, mesh_d, x_m, mesh_sq, shape, i)
 
+    # Summary table
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    tag = "rel L2" if RELATIVE_L2 else "L2"
+    print(f"  {'Shape':>5}  {'Direct max|u|':>14}  {'Mapped max|u|':>14}  "
+          f"{tag+' direct':>12}  {tag+' pullbk':>12}")
+    print("  " + "-" * 66)
+    for r in results:
+        print(f"  {r['shape']:>5d}  {r['direct_max']:>14.6e}  {r['mapped_max']:>14.6e}  "
+              f"{r['l2_direct']:>12.3e}  {r['l2_mapped']:>12.3e}")
+
     print("\n" + "=" * 60)
     print("ALL SHAPES COMPLETE")
     print("=" * 60)
+
+
 
 
 if __name__ == "__main__":

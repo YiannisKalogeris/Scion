@@ -51,9 +51,9 @@ from models.neural_spline_flow import NeuralSplineFlow, NSFMapping
 
 _SCRIPT_DIR = Path(__file__).parent
 
-DATA_DIR = _SCRIPT_DIR / "data_superellipse"                 #"data"
-CHECKPOINT_DIR = _SCRIPT_DIR / "checkpoints_superellipse" #"checkpoints_nsf"
-OUTPUT_DIR = _SCRIPT_DIR / "outputs_superellipse"         #"outputs_nsf"
+DATA_DIR = _SCRIPT_DIR / "data_fourierBlob"                 #"data"
+CHECKPOINT_DIR = _SCRIPT_DIR / "checkpoints_fourierBlob" #"checkpoints_nsf"
+OUTPUT_DIR = _SCRIPT_DIR / "outputs_fourierBlob"         #"outputs_nsf"
 
 DEVICE = 'cuda' if torch.cuda.is_available() else \
          'mps'  if torch.backends.mps.is_available() else 'cpu'
@@ -71,7 +71,7 @@ DATA_CONFIG = {
     "n_interior_points": 1024,
     "n_boundary_points": 256,
     "harmonic_grid_size": 128,
-    "shape_distribution": {"Ellipse": 0.0, "Superellipse": 1.0, "FourierBlob": 0.0, "SmoothPolygon": 0.0, "StarPolygon": 0.0},
+    "shape_distribution": {"Ellipse": 0.0, "Superellipse": 0.0, "FourierBlob": 1.0, "SmoothPolygon": 0.0, "StarPolygon": 0.0},
 }
 
 # -----------------------------------------------------------------------------
@@ -79,7 +79,7 @@ DATA_CONFIG = {
 # Direction: □ → Ω  (domain = square, codomain = physical shape region)
 # -----------------------------------------------------------------------------
 MODEL_CONFIG = {
-    "n_layers": 10,
+    "n_layers": 14,
     "n_bins": 20,
     "hidden_dim": 128,
     "n_hidden": 3,
@@ -143,7 +143,7 @@ FIT_CONFIG = {
 # Pipeline Control
 # -----------------------------------------------------------------------------
 PIPELINE = {
-    "generate_data": False,
+    "generate_data": True,
     "train_stage1": True,
     "train_stage2": True,
     "evaluate": True,
@@ -632,7 +632,7 @@ def train_stage1(run_dir):
     ])
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=cfg["n_epochs"],
-        eta_min=cfg["learning_rate_flow"] * 0.1,
+        eta_min=cfg["learning_rate_flow"] * 0.01, #0.1 better for the ellipse
     )
 
     from torch.utils.data import Dataset, DataLoader
@@ -785,7 +785,7 @@ def train_stage2(run_dir):
     )
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=cfg["n_epochs"],
-        eta_min=cfg["learning_rate"] * 0.05,
+        eta_min=cfg["learning_rate"] * 0.01,  ##0.05 better for the ellipse
     )
 
     from torch.utils.data import Dataset, DataLoader

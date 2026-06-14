@@ -48,20 +48,22 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent.parent / "projects" / "nsf_
 sys.path.insert(0, str(PROJECT_DIR / "models"))
 sys.path.insert(0, str(PROJECT_DIR))
 from neural_spline_flow import NeuralSplineFlow
-from Main_nsf import AutoDecoderNSF, AutoDecoderMapping, create_autodecoder
+from Main_nsf import (AutoDecoderNSF, AutoDecoderMapping, create_autodecoder,
+                      load_inference_model, EncoderMapping)
 from dataset import DiffeomorphismDataset
+from simulacrum.geometry.sdf import SDFRenderer
 
 # ====================================================================
 # CONFIGURATION
 # ====================================================================
-CHECKPOINT_DIR = PROJECT_DIR / "checkpoints_superellipse"
-DATA_DIR = PROJECT_DIR / "data_superellipse"
+CHECKPOINT_DIR = PROJECT_DIR / "checkpoints_ellipse"
+DATA_DIR = PROJECT_DIR / "data_ellipse"
 DEVICE = "cpu"
 
 _FIG_DIR = Path(__file__).resolve().parent / "Figures_multi_shape_poisson"
 _FIG_DIR.mkdir(exist_ok=True)
 
-N_SQUARE = 30
+N_SQUARE = 40
 MESH_LC = 0.05
 DIRECT_ETYPE = "quad4"       # "tri3" or "quad4"
 
@@ -77,6 +79,14 @@ HIFI_TARGET_ELEMS = 40000     # high-fidelity reference solve ("ground truth")
 HIFI_ETYPE        = "quad4"     # robust element type for the fine reference mesh
 RELATIVE_L2       = True       # report ||e||_L2 / ||u_ref||_L2 (False => absolute, as in example 1)
 ERROR_CLIM = (0.0, 0.25) 
+
+# ── Mapping source ──
+# Encoder is the primary path; if its checkpoint is absent we fall back to the stored
+# Stage-1 codes (perfect-z testing). Rename encoder_best.pt (e.g. -> encoder_best_REMOVE.pt)
+# to force the stored-code path, exactly as in Main_nsf.py.
+ENCODER_CKPT = "encoder_best_REMOVE.pt"
+SDF_GRID     = 64              # encoder SDF image resolution (must match training)
+SDF_BOUNDS   = (-2.5, 2.5)     # encoder SDF bounding box   (must match training)
 
 # ====================================================================
 # LOAD AUTO-DECODER (Stage 1 only, stored codes)
@@ -98,7 +108,18 @@ def load_model():
     n_train = len(train_dataset)
 
     model_cfg = cfg["model"]
-    model = create_autodecoder(n_train)
+
+    model = AutoDecoderNSF(
+        n_shapes=n_train,
+        latent_dim=model_cfg["latent_dim"],
+        n_layers=model_cfg["n_layers"],
+        n_bins=model_cfg["n_bins"],
+        hidden_dim=model_cfg["hidden_dim"],
+        n_hidden=model_cfg["n_hidden"],
+        domain_bounds=tuple(model_cfg["domain_bounds"]),
+        codomain_bounds=tuple(model_cfg["codomain_bounds"]),
+    ).to("cpu")
+
     model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model = model.to("cpu")
     model.eval()
@@ -631,20 +652,28 @@ def main():
     print(f"  Device:  {DEVICE}")
     print(f"  Source:  f = {F_SOURCE}")
 
-    # Load auto-decoder with stored codes
-    model, train_dataset = load_model()
+    # ── Mapping source: encoder if its checkpoint exists, else stored Stage-1 codes ──
+    use_encoder = (CHECKPOINT_DIR / ENCODER_CKPT).exists()
+    if use_encoder:
+        model = load_inference_model(CHECKPOINT_DIR)
+        renderer = SDFRenderer(grid_size=SDF_GRID, bounds=SDF_BOUNDS)
+        print(f"  Mapping source: ENCODER  (found {ENCODER_CKPT})")
+    else:
+        model, train_dataset = load_model()
+        print(f"  Mapping source: STORED Stage-1 codes  ({ENCODER_CKPT} not found)")
 
-    # Regenerate the same shapes used in training
+    # Regenerate the same shapes used in training (identical seed / distribution)
     with open(CHECKPOINT_DIR / "config.json") as f:
         cfg = json.load(f)
     data_cfg = cfg["data"]
+    n_train = data_cfg["n_train"]
     gen = ShapeGenerator(
         seed=cfg.get("seed", SEED),
         shape_distribution=data_cfg["shape_distribution"],
     )
-    train_shapes = [gen.generate() for _ in range(len(train_dataset))]
+    train_shapes = [gen.generate() for _ in range(n_train)]
 
-    n_shapes = min(N_TEST_SHAPES, len(train_dataset))
+    n_shapes = min(N_TEST_SHAPES, n_train)
     print(f"\n  Testing on {n_shapes} training shapes")
 
     results = []
@@ -656,11 +685,17 @@ def main():
         print(f"  SHAPE {i+1}/{n_shapes}")
         print("=" * 60)
 
-        # Use stored code — no fitting, no encoder
-        with torch.no_grad():
-            z = model.latent_codes(torch.tensor(i, device=DEVICE))
-        mapping = AutoDecoderMapping(model, z)
-        print(f"  Stored code z (norm={z.norm():.4f})")
+        # Build the mapping for this shape
+        if use_encoder:
+            image_np = renderer.render(shape)
+            image_t = torch.tensor(image_np, dtype=torch.float32, device=DEVICE)
+            mapping = EncoderMapping(model, image_t)
+            print(f"  Encoded shape -> z (norm={mapping.z.norm():.4f})")
+        else:
+            with torch.no_grad():
+                z = model.latent_codes(torch.tensor(i, device=DEVICE))
+            mapping = AutoDecoderMapping(model, z)
+            print(f"  Stored code z (norm={z.norm():.4f})")
 
         # Direct solve
         print("\n  Direct solve:")
