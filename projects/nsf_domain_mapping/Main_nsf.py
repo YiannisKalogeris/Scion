@@ -143,10 +143,10 @@ FIT_CONFIG = {
 # Pipeline Control
 # -----------------------------------------------------------------------------
 PIPELINE = {
-    "generate_data": True,
-    "train_stage1": True,
-    "train_stage2": True,
-    "evaluate": True,
+    "generate_data": False,
+    "train_stage1": False,
+    "train_stage2": False,
+    "evaluate": False,
     "visualize": True,
     "n_visualizations": 5,
 }

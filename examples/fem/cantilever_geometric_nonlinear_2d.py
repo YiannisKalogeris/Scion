@@ -17,7 +17,6 @@ Analysis:
 The linear solution predicts deflection >> beam length (unphysical).
 The nonlinear solution accounts for membrane stiffening under large rotations.
 
-Place at:  examples/fem/cantilever_geometric_nonlinear_2d.py
 Run:       python examples/fem/cantilever_geometric_nonlinear_2d.py
 """
 
@@ -63,6 +62,15 @@ NY = 6    # elements along height
 N_LOAD_STEPS = 50
 NR_TOL = 1e-8
 NR_MAX_ITER = 30
+
+# Geometrically-nonlinear internal force / tangent formulation:
+#   "pk1"     -> f_int = P : grad(N),  K_T from full 4th-order tangent dP/dF
+#   "pk2" -> f_int = B_L^T S,  K_T = K_L + K_NL
+#                = B_L^T C B_L + B_grad^T S_bar B_grad
+#                (2nd Piola-Kirchhoff + Green-Lagrange, Total Lagrangian
+#                 B-matrix form as derived in the course slides)
+# The two are mathematically equivalent and agree to machine precision.
+FORMULATION = "pk1"   # "pk1" or "pk2"
 
 
 # ====================================================================
@@ -209,6 +217,152 @@ def assemble_internal_force_and_tangent(mesh, dof_map, u, material, plane_stress
     return f_int, K_T
 
 
+# ====================================================================
+# B-MATRIX FORMULATION (2nd Piola-Kirchhoff + Green-Lagrange)
+# Total Lagrangian, as derived in the course slides.
+# ====================================================================
+def build_B_grad(dN_dX):
+    """
+    B_nabla: maps nodal increments to the displacement-gradient vector
+        dg = [u,X ; v,Y ; u,Y ; v,X].
+    Shape (4, 2*n_nodes). Element DOF ordering: [u1, v1, u2, v2, ...].
+    """
+    n = dN_dX.shape[0]
+    Bg = np.zeros((4, 2 * n))
+    for a in range(n):
+        Nx, Ny = dN_dX[a, 0], dN_dX[a, 1]
+        Bg[0, 2 * a]     = Nx   # u,X
+        Bg[1, 2 * a + 1] = Ny   # v,Y
+        Bg[2, 2 * a]     = Ny   # u,Y
+        Bg[3, 2 * a + 1] = Nx   # v,X
+    return Bg
+
+
+def build_A_L(grad_u):
+    """
+    A_L(u^i): maps the displacement-gradient vector dg to the *linear part*
+    of the Green-Lagrange strain increment, Voigt form [e_XX; e_YY; 2 e_XY].
+    Shape (3, 4). `grad_u` is the 2x2 current displacement gradient with
+    grad_u[i, J] = u_i,J  (grad_u[0,0]=u,X, grad_u[0,1]=u,Y,
+    grad_u[1,0]=v,X, grad_u[1,1]=v,Y).
+    """
+    uX, uY = grad_u[0, 0], grad_u[0, 1]
+    vX, vY = grad_u[1, 0], grad_u[1, 1]
+    return np.array([
+        [1.0 + uX, 0.0,      0.0,       vX      ],
+        [0.0,      1.0 + vY, uY,        0.0     ],
+        [uY,       vX,       1.0 + uX,  1.0 + vY],
+    ])
+
+
+def build_S_bar(S_voigt):
+    """
+    S_bar: 4x4 initial-stress matrix for the geometric stiffness, built from
+    the 2nd PK stress S = [S_XX, S_YY, S_XY] (Voigt). Row/col ordering matches
+    dg = [u,X ; v,Y ; u,Y ; v,X].
+    """
+    Sxx, Syy, Sxy = S_voigt
+    return np.array([
+        [Sxx, 0.0, Sxy, 0.0],
+        [0.0, Syy, 0.0, Sxy],
+        [Sxy, 0.0, Syy, 0.0],
+        [0.0, Sxy, 0.0, Sxx],
+    ])
+
+
+def assemble_internal_force_and_tangent_bmatrix(mesh, dof_map, u, material,
+                                                plane_stress=True):
+    """
+    Total Lagrangian assembly using the B-matrix formulation (slides):
+
+        f_int = INT  B_L^T S          dV0
+        K_T   = INT  B_L^T C B_L      dV0   (K_L,  material + initial-disp.)
+              + INT  B_grad^T S_bar B_grad dV0   (K_NL, geometric/initial-stress)
+
+    with B_L = A_L(u) B_grad, S = 2nd PK stress (Voigt), C = dS/dE (Voigt).
+    Physically identical to assemble_internal_force_and_tangent (PK1 form).
+    """
+    n_dof = dof_map.n_total
+    f_int = np.zeros(n_dof)
+    rows, cols, vals = [], [], []
+    disp = u.reshape(-1, 2)
+
+    for block in mesh.element_blocks:
+        ref = get_element(block.etype)
+        qpts, qwts = get_quadrature(block.etype)
+        for e in range(block.connectivity.shape[0]):
+            enodes = block.connectivity[e]
+            coords = mesh.nodes[enodes]
+            u_elem = disp[enodes]
+            edofs = dof_map.element_dofs(enodes)
+            n_el_dof = len(edofs)
+            fe_int = np.zeros(n_el_dof)
+            ke_t = np.zeros((n_el_dof, n_el_dof))
+
+            for qp, qw in zip(qpts, qwts):
+                N, dN_dxi = ref.evaluate(qp)
+                J_ref = dN_dxi.T @ coords
+                detJ_ref = abs(np.linalg.det(J_ref))
+                dN_dX = dN_dxi @ np.linalg.inv(J_ref)
+
+                grad_u = u_elem.T @ dN_dX           # 2x2, grad_u[i,J] = u_i,J
+                F = np.eye(2) + grad_u
+
+                S_voigt, C_voigt = material.pk2_voigt_and_tangent_2d(
+                    F, plane_stress)
+
+                B_grad = build_B_grad(dN_dX)        # (4, n_el_dof)
+                A_L = build_A_L(grad_u)             # (3, 4)
+                B_L = A_L @ B_grad                  # (3, n_el_dof)
+                S_bar = build_S_bar(S_voigt)        # (4, 4)
+
+                w = detJ_ref * qw * THICKNESS
+
+                fe_int += (B_L.T @ S_voigt) * w               # internal force
+                ke_t   += (B_L.T @ C_voigt @ B_L) * w         # K_L  (material)
+                ke_t   += (B_grad.T @ S_bar @ B_grad) * w     # K_NL (geometric)
+
+            for il, ig in enumerate(edofs):
+                f_int[ig] += fe_int[il]
+                for jl, jg in enumerate(edofs):
+                    rows.append(ig); cols.append(jg); vals.append(ke_t[il, jl])
+
+    K_T = sparse.csr_matrix((np.array(vals), (np.array(rows), np.array(cols))),
+                            shape=(n_dof, n_dof))
+    return f_int, K_T
+
+
+def assemble_nonlinear(mesh, dof_map, u, material, plane_stress=True):
+    """Dispatch to the active formulation (see the FORMULATION toggle)."""
+    if FORMULATION == "pk1":
+        return assemble_internal_force_and_tangent(
+            mesh, dof_map, u, material, plane_stress)
+    elif FORMULATION == "pk2":
+        return assemble_internal_force_and_tangent_bmatrix(
+            mesh, dof_map, u, material, plane_stress)
+    else:
+        raise ValueError(
+            f"Unknown FORMULATION '{FORMULATION}' (use 'pk1' or 'pk2')")
+
+
+def verify_formulations_agree(mesh, dof_map, material, scale=1e-3, seed=0):
+    """
+    Sanity check: the PK1 and B-matrix assemblies must produce the same
+    f_int and K_T for an arbitrary displacement field, since they are the
+    same physics in two algebraic forms. Returns relative errors
+    (||df_int||/||f_int||, ||dK_T||/||K_T||); both should be ~1e-15.
+    """
+    rng = np.random.default_rng(seed)
+    u = scale * rng.standard_normal(dof_map.n_total)
+    f1, K1 = assemble_internal_force_and_tangent(
+        mesh, dof_map, u, material, True)
+    f2, K2 = assemble_internal_force_and_tangent_bmatrix(
+        mesh, dof_map, u, material, True)
+    rel_f = np.linalg.norm(f1 - f2) / max(np.linalg.norm(f1), 1e-30)
+    rel_K = sparse.linalg.norm(K1 - K2) / max(sparse.linalg.norm(K1), 1e-30)
+    return float(rel_f), float(rel_K)
+
+
 def check_detF(mesh, dof_map, u):
     """Check if det(F) > 0 at all quadrature points."""
     disp = u.reshape(-1, 2)
@@ -237,17 +391,18 @@ def solve_nonlinear(mesh, f_ext_total, constrained_dofs, material):
     print("\n" + "=" * 60)
     print("NONLINEAR ANALYSIS (large displacements, SVK)")
     print("=" * 60)
+    print(f"  Formulation: {FORMULATION}")
 
     dof_map = DOFMap(mesh.n_nodes, n_components=2)
     n_dof = dof_map.n_total
 
     def f_int_fn(u):
-        f_int, _ = assemble_internal_force_and_tangent(
+        f_int, _ = assemble_nonlinear(
             mesh, dof_map, u, material, plane_stress=True)
         return f_int
 
     def K_T_fn(u):
-        _, K_T = assemble_internal_force_and_tangent(
+        _, K_T = assemble_nonlinear(
             mesh, dof_map, u, material, plane_stress=True)
         return K_T
 
@@ -554,6 +709,11 @@ def main():
         print("  WARNING: Tangent may be inconsistent!")
     else:
         print("  Tangent OK")
+
+    # ── Cross-check: PK1 and B-matrix assemblies must agree ──
+    rel_f, rel_K = verify_formulations_agree(mesh, dof_map, material_svk)
+    print(f"  PK1 vs B-matrix: rel |df_int| = {rel_f:.2e}, "
+          f"rel |dK_T| = {rel_K:.2e}")
 
     # ── Linear solve ──
     u_lin = solve_linear(mesh, f_ext, constrained_dofs)

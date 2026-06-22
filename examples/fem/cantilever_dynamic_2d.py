@@ -17,7 +17,6 @@ Analysis steps:
     5. Time integration: Newmark-β and Central Difference
     6. Compare displacement history at the loaded node
 
-Place at:  examples/fem/cantilever_dynamic_2d.py
 Run:       python examples/fem/cantilever_dynamic_2d.py
 """
 

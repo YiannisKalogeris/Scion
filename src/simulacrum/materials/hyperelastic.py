@@ -254,3 +254,331 @@ class NeoHookean(Material):
  
     def stress(self, strain, dim=3):
         raise NotImplementedError("Use pk1_stress_2d with deformation gradient F")
+
+
+class NeoHookeanDecoupled(Material):
+    """
+    Compressible Neo-Hookean with a decoupled deviatoric-volumetric split.
+
+    This is the form used by ANSYS / Abaqus (and the one requested in
+    Εργασία 3). Strain energy (3D):
+
+        W(F) = (μ/2)(Ī₁ - 3) + (K/2)(J - 1)²
+
+    with the isochoric (volume-preserving) first invariant
+
+        Ī₁ = J^(-2/3) I₁,   I₁ = tr(C) = F:F,   J = det F,
+
+    μ the initial shear modulus and K the initial bulk modulus.
+
+    First Piola-Kirchhoff stress (P = ∂W/∂F):
+
+        P = μ J^(-2/3) (F - (1/3) I₁ F⁻ᵀ)  +  K J (J - 1) F⁻ᵀ
+
+    The material tangent A_iJkL = ∂P_iJ/∂F_kL is computed in closed form
+    (see _pk1_tangent_3d). At F = I the tangent reduces exactly to the
+    isotropic linear elastic tensor with shear modulus μ and Lamé
+    λ = K - 2μ/3, so the *initial* response matches linear elasticity.
+
+    Supports three idealisations through one 3D kernel:
+        - 3D            : pk1_stress_and_tangent_3d(F)            (F is 3x3)
+        - plane strain  : pk1_stress_and_tangent_2d(F, False)    (λ₃ = 1)
+        - plane stress  : pk1_stress_and_tangent_2d(F, True)     (solve σ₃₃=0)
+
+    Note: this is a DIFFERENT model from `NeoHookean` in this module, which
+    uses the coupled ln(J) (Ciarlet) energy. They diverge at large strain.
+
+    Parameters
+    ----------
+    mu : float
+        Initial shear modulus.
+    K : float
+        Initial bulk modulus.
+    """
+
+    name = "NeoHookeanDecoupled"
+
+    def __init__(self, mu: float, K: float):
+        self.mu = mu
+        self.K = K
+        self.lam = K - 2.0 * mu / 3.0  # equivalent Lamé first parameter
+
+    @classmethod
+    def from_E_nu(cls, E: float, nu: float):
+        """
+        Create from Young's modulus and Poisson's ratio.
+
+            μ = E / (2(1+ν)),   K = E / (3(1-2ν))
+
+        These make the initial tangent coincide with the isotropic linear
+        elastic material defined by (E, ν).
+        """
+        mu = E / (2.0 * (1.0 + nu))
+        K = E / (3.0 * (1.0 - 2.0 * nu))
+        return cls(mu=mu, K=K)
+
+    @property
+    def bulk_modulus(self):
+        return self.K
+
+    @property
+    def shear_modulus(self):
+        return self.mu
+
+    # -----------------------------------------------------------------
+    # Helpers
+    # -----------------------------------------------------------------
+    @staticmethod
+    def _embed(F2, lam3):
+        """Embed a 2x2 deformation gradient into 3x3 with F_33 = lam3."""
+        F3 = np.eye(3)
+        F3[:2, :2] = F2
+        F3[2, 2] = lam3
+        return F3
+
+    # -----------------------------------------------------------------
+    # 3D kernel: PK1 stress and consistent tangent
+    # -----------------------------------------------------------------
+    def _pk1_tangent_3d(self, F):
+        """
+        Core routine. Returns (P, A) for a full 3x3 deformation gradient F.
+
+            P : (3, 3)        First Piola-Kirchhoff stress
+            A : (3,3,3,3)     Tangent A_iJkL = ∂P_iJ/∂F_kL
+        """
+        mu, K = self.mu, self.K
+        J = np.linalg.det(F)
+
+        # Guard against non-physical / inverted states (help NR recover)
+        if J <= 1e-14:
+            P = np.zeros((3, 3))
+            A = mu * np.einsum('ik,JL->iJkL', np.eye(3), np.eye(3))
+            return P, A
+
+        Finv = np.linalg.inv(F)
+        G = Finv.T                       # G_iJ = (F⁻ᵀ)_iJ
+        I1 = float(np.sum(F * F))        # tr(FᵀF)
+        g = J ** (-2.0 / 3.0)
+
+        # PK1 stress
+        P = mu * g * (F - (1.0 / 3.0) * I1 * G) + K * J * (J - 1.0) * G
+
+        # Consistent tangent A_iJkL = ∂P_iJ/∂F_kL
+        I3 = np.eye(3)
+        A = (mu * g) * (
+            np.einsum('ik,JL->iJkL', I3, I3)
+            - (2.0 / 3.0) * (np.einsum('iJ,kL->iJkL', F, G)
+                             + np.einsum('kL,iJ->iJkL', F, G))
+            + (2.0 / 9.0) * I1 * np.einsum('iJ,kL->iJkL', G, G)
+            + (1.0 / 3.0) * I1 * np.einsum('iL,kJ->iJkL', G, G)
+        )
+        A += K * J * (2.0 * J - 1.0) * np.einsum('iJ,kL->iJkL', G, G)
+        A -= K * J * (J - 1.0) * np.einsum('iL,kJ->iJkL', G, G)
+        return P, A
+
+    def pk1_stress_and_tangent_3d(self, F):
+        """3D PK1 stress and tangent. F is (3, 3)."""
+        return self._pk1_tangent_3d(F)
+
+    def pk1_stress_3d(self, F):
+        """3D PK1 stress only. F is (3, 3)."""
+        P, _ = self._pk1_tangent_3d(F)
+        return P
+
+    # -----------------------------------------------------------------
+    # Plane stress: solve σ₃₃ = 0 (⇔ P₃₃ = 0) for the out-of-plane stretch
+    # -----------------------------------------------------------------
+    def _solve_lambda3(self, F2, tol=1e-12, max_iter=50):
+        """Newton solve of P₃₃(λ₃) = 0 for the plane-stress out-of-plane stretch."""
+        lam3 = 1.0
+        for _ in range(max_iter):
+            P3, A3 = self._pk1_tangent_3d(self._embed(F2, lam3))
+            r = P3[2, 2]
+            drdl = A3[2, 2, 2, 2]
+            if abs(drdl) < 1e-30:
+                break
+            dlam3 = -r / drdl
+            if lam3 + dlam3 <= 0.0:      # keep the stretch positive
+                lam3 *= 0.5
+            else:
+                lam3 += dlam3
+            if abs(dlam3) < tol * abs(lam3):
+                break
+        return lam3
+
+    # -----------------------------------------------------------------
+    # 2D interface (plane strain / plane stress), drop-in compatible
+    # with the rest of the materials in this module.
+    # -----------------------------------------------------------------
+    def pk1_stress_and_tangent_2d(self, F, plane_stress=True):
+        """
+        2D PK1 stress and condensed tangent. F is (2, 2).
+
+        Returns:
+            P2  : (2, 2)        in-plane First PK stress
+            A2  : (2,2,2,2)     in-plane tangent ∂P_iJ/∂F_kL
+            lam3: out-of-plane stretch (1.0 for plane strain)
+        """
+        if plane_stress:
+            lam3 = self._solve_lambda3(F)
+        else:
+            lam3 = 1.0
+
+        P3, A3 = self._pk1_tangent_3d(self._embed(F, lam3))
+        P2 = P3[:2, :2].copy()
+        A2 = A3[:2, :2, :2, :2].copy()
+
+        if plane_stress:
+            # Static condensation of the out-of-plane DOF:
+            #   dλ₃/dF_kL = -A₃₃kL / A₃₃₃₃,   then
+            #   A2_iJkL += ∂P_iJ/∂λ₃ · dλ₃/dF_kL = A_iJ33 · dλ₃/dF_kL
+            denom = A3[2, 2, 2, 2]
+            dlam3_dF = -A3[2, 2, :2, :2] / denom
+            A2 += np.einsum('iJ,kL->iJkL', A3[:2, :2, 2, 2], dlam3_dF)
+
+        return P2, A2, lam3
+
+    def pk1_stress_2d(self, F, plane_stress=True):
+        """
+        2D PK1 stress only. F is (2, 2).
+
+        Returns:
+            P2  : (2, 2) in-plane First PK stress
+            lam3: out-of-plane stretch (1.0 for plane strain)
+
+        (No condensation term is needed for the stress itself — by the
+        envelope theorem ∂W/∂λ₃ = P₃₃ = 0 at the plane-stress solution.)
+        """
+        if plane_stress:
+            lam3 = self._solve_lambda3(F)
+        else:
+            lam3 = 1.0
+        P3, _ = self._pk1_tangent_3d(self._embed(F, lam3))
+        return P3[:2, :2].copy(), lam3
+
+    # -----------------------------------------------------------------
+    # 2nd Piola-Kirchhoff stress and material tangent in Voigt form
+    # (for the B-matrix / Total Lagrangian PK2 formulation)
+    # -----------------------------------------------------------------
+    def pk2_voigt_and_tangent_2d(self, F, plane_stress=True):
+        """
+        2nd Piola-Kirchhoff stress and material tangent in Voigt notation,
+        for the B-matrix (Total Lagrangian) formulation. F is (2, 2).
+
+            S_voigt = [S_XX, S_YY, S_XY]      (2nd PK stress)
+            C_voigt = dS/dE  (3x3 Voigt, engineering shear)
+            lam3    = out-of-plane stretch (1.0 for plane strain)
+
+        Obtained by pulling back the (condensed) PK1 stress and tangent
+        returned by pk1_stress_and_tangent_2d:
+
+            S       = F^{-1} P
+            A_iJkL  = d_ik S_LJ + F_iM F_kN C_MJNL
+            =>  C_MJNL = F^{-1}_Mi F^{-1}_Nk (A_iJkL - d_ik S_LJ)
+
+        This identity is exact, so the PK2/B-matrix assembly reproduces the
+        PK1 assembly to machine precision. Valid for both plane strain
+        (lam3 = 1) and plane stress (where A, S are the condensed quantities).
+        """
+        P2, A2, lam3 = self.pk1_stress_and_tangent_2d(F, plane_stress)
+        Finv = np.linalg.inv(F)
+        S2 = Finv @ P2                                  # 2nd PK (2x2)
+
+        I2 = np.eye(2)
+        geom = np.einsum('ik,LJ->iJkL', I2, S2)         # d_ik S_LJ
+        C4 = np.einsum('Mi,Nk,iJkL->MJNL', Finv, Finv, A2 - geom)  # dS/dE
+
+        vm = [(0, 0), (1, 1), (0, 1)]
+        S_voigt = np.array([S2[0, 0], S2[1, 1], S2[0, 1]])
+        C_voigt = np.zeros((3, 3))
+        for a, (M, J) in enumerate(vm):
+            for b, (N, L) in enumerate(vm):
+                C_voigt[a, b] = C4[M, J, N, L]
+        return S_voigt, C_voigt, lam3
+
+    # -----------------------------------------------------------------
+    # Cauchy stress
+    # -----------------------------------------------------------------
+    def cauchy_stress_3d(self, F):
+        """Cauchy stress σ = (1/J) P Fᵀ. F is (3, 3); returns (3, 3)."""
+        P, _ = self._pk1_tangent_3d(F)
+        J = np.linalg.det(F)
+        return (1.0 / J) * P @ F.T
+
+    def cauchy_stress_2d(self, F, plane_stress=True):
+        """
+        Cauchy stress for a 2D problem. F is (2, 2).
+
+        Returns the FULL 3x3 Cauchy tensor: [:2,:2] is the in-plane stress
+        and [2,2] is σ₃₃ (zero for plane stress, generally nonzero for plane
+        strain — needed for a correct plane-strain von Mises).
+        """
+        if plane_stress:
+            lam3 = self._solve_lambda3(F)
+        else:
+            lam3 = 1.0
+        F3 = self._embed(F, lam3)
+        P3, _ = self._pk1_tangent_3d(F3)
+        J3 = np.linalg.det(F3)
+        return (1.0 / J3) * P3 @ F3.T
+
+    # -----------------------------------------------------------------
+    # Strain energy
+    # -----------------------------------------------------------------
+    def strain_energy_3d(self, F):
+        """Strain energy density W(F). F is (3, 3)."""
+        J = np.linalg.det(F)
+        I1 = float(np.sum(F * F))
+        I1_bar = J ** (-2.0 / 3.0) * I1
+        return 0.5 * self.mu * (I1_bar - 3.0) + 0.5 * self.K * (J - 1.0) ** 2
+
+    def strain_energy(self, F, plane_stress=True):
+        """Strain energy density for a 2D problem. F is (2, 2)."""
+        if plane_stress:
+            lam3 = self._solve_lambda3(F)
+        else:
+            lam3 = 1.0
+        return self.strain_energy_3d(self._embed(F, lam3))
+
+    # -----------------------------------------------------------------
+    # Small-strain (initial) tangent in Voigt form, for compatibility
+    # and for building the matching linear-elastic comparison material.
+    # -----------------------------------------------------------------
+    def tangent(self, dim: int = 3, plane_stress: bool = False, strain=None):
+        """
+        Initial linear-elastic tangent in Voigt notation.
+
+            dim=3                      -> 6x6  [xx,yy,zz,xy,yz,zx]
+            dim=2, plane_stress=False  -> 3x3  plane strain  [xx,yy,xy]
+            dim=2, plane_stress=True   -> 3x3  plane stress   [xx,yy,xy]
+        """
+        mu, lam = self.mu, self.lam
+        if dim == 3:
+            C = np.zeros((6, 6))
+            C[:3, :3] = lam
+            for i in range(3):
+                C[i, i] += 2.0 * mu
+            for i in range(3, 6):
+                C[i, i] = mu
+            return C
+        if dim == 2:
+            if not plane_stress:
+                return np.array([
+                    [lam + 2 * mu, lam,          0.0],
+                    [lam,          lam + 2 * mu, 0.0],
+                    [0.0,          0.0,          mu ],
+                ])
+            # plane stress: recover (E, ν) from (μ, λ)
+            E = mu * (3.0 * lam + 2.0 * mu) / (lam + mu)
+            nu = lam / (2.0 * (lam + mu))
+            c = E / (1.0 - nu ** 2)
+            return np.array([
+                [c,      c * nu, 0.0           ],
+                [c * nu, c,      0.0           ],
+                [0.0,    0.0,    c * (1 - nu) / 2.0],
+            ])
+        raise NotImplementedError(f"tangent for dim={dim} not implemented")
+
+    def stress(self, strain, dim=3):
+        raise NotImplementedError(
+            "Use pk1_stress_*_2d / _3d with the deformation gradient F")

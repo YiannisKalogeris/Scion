@@ -1,28 +1,30 @@
 #!/usr/bin/env python3
 """
-Nonlinear analysis of a 2D cantilever beam: linear elastic vs Neo-Hookean.
+Εργασία 3 — Material nonlinearity: linear elastic vs decoupled Neo-Hookean.
 
 Problem:
-    - Rectangular beam: 4m × 1m, thickness 0.2m
+    - Rectangular body: 4m × 1m, thickness 0.2m
     - Material: E = 50 GPa, ν = 0.3
     - Left edge clamped (u_x = u_y = 0)
-    - Right edge: prescribed horizontal displacement ū = 0.20 m
-    - Plane stress
+    - Right edge: prescribed horizontal displacement ū = 1.50 m
+    - Plane strain (toggleable; see PLANE_STRESS below)
 
 Analysis:
     1. Linear elastic: single solve with prescribed displacement
     2. Neo-Hookean: Newton-Raphson with incremental displacement control
     3. Compare force-displacement curves and stress fields
 
-Material parameters:
-    Linear:      E = 50 GPa, ν = 0.3
-    Neo-Hookean: μ = E/(2(1+ν)) = 19.23 GPa
-                 λ = Eν/((1+ν)(1-2ν)) = 28.85 GPa
-    These ensure the initial tangent of the Neo-Hookean model
-    matches the linear elastic response at infinitesimal strain.
+Neo-Hookean model (decoupled deviatoric-volumetric, as in the assignment):
+    W(F) = (μ/2)(Ī₁ - 3) + (K/2)(J - 1)²,   Ī₁ = J^(-2/3) I₁
+    μ = E/(2(1+ν)) = 19.23 GPa,  K = E/(3(1-2ν)) = 41.67 GPa
+    Chosen so the initial tangent matches the linear elastic response.
 
-Place at:  examples/fem/cantilever_nonlinear_2d.py
-Run:       python examples/fem/cantilever_nonlinear_2d.py
+Toggles:
+    PLANE_STRESS : False -> plane strain (the assignment), True -> plane stress
+    FORMULATION  : "pk1" (P:∇N) or "pk2" (B-matrix, 2nd PK + Green-Lagrange)
+                   The two are equivalent and agree to machine precision.
+
+Run:       python examples/fem/cantilever_nonlinearHyperelastic_2d.py
 """
 
 import numpy as np
@@ -38,7 +40,7 @@ from simulacrum.core.dof import DOFMap
 from simulacrum.discretization.fem.elements import get_element
 from simulacrum.discretization.fem.quadrature import get_quadrature
 from simulacrum.materials.linear_elastic import PlaneStress
-from simulacrum.materials.hyperelastic import NeoHookean
+from simulacrum.materials.hyperelastic import NeoHookean, NeoHookeanDecoupled
 from simulacrum.solvers.nonlinear import DisplacementControl
 
 # ====================================================================
@@ -60,13 +62,23 @@ NU_POISSON = 0.3
 U_PRESCRIBED = 1.50  # m (horizontal, on right edge)
 
 # Mesh
-MESH_LC = 0.05
+MESH_LC = 0.1
 ETYPE = "quad4"
 
 # Nonlinear solver
 N_LOAD_STEPS = 50        # number of increments
 NR_TOL = 1e-6            # Newton-Raphson tolerance (relative residual)
 NR_MAX_ITER = 50         # max Newton iterations per load step
+
+# Idealisation: False -> plane strain (the assignment), True -> plane stress
+PLANE_STRESS = False
+
+# Internal force / tangent formulation:
+#   "pk1" -> f_int = P : grad(N),  K_T from dP/dF
+#   "pk2" -> f_int = B_L^T S,  K_T = B_L^T C B_L + B_grad^T S_bar B_grad
+#            (2nd Piola-Kirchhoff + Green-Lagrange, B-matrix form)
+# Equivalent; they agree to machine precision.
+FORMULATION = "pk2"      # "pk1" or "pk2"
 
 
 # ====================================================================
@@ -143,6 +155,25 @@ def build_B_matrix(dN_dx):
     return B
 
 
+def linear_elastic_C(plane_stress):
+    """Small-strain isotropic Voigt elasticity matrix [xx, yy, xy]."""
+    E, nu = E_YOUNG, NU_POISSON
+    if plane_stress:
+        c = E / (1.0 - nu**2)
+        return np.array([
+            [c,      c * nu, 0.0            ],
+            [c * nu, c,      0.0            ],
+            [0.0,    0.0,    c * (1 - nu) / 2.0],
+        ])
+    lam = E * nu / ((1.0 + nu) * (1.0 - 2.0 * nu))
+    mu = E / (2.0 * (1.0 + nu))
+    return np.array([
+        [lam + 2 * mu, lam,          0.0],
+        [lam,          lam + 2 * mu, 0.0],
+        [0.0,          0.0,          mu ],
+    ])
+
+
 # ====================================================================
 # LINEAR ELASTIC SOLVE (with prescribed displacement)
 # ====================================================================
@@ -153,7 +184,7 @@ def solve_linear(mesh, u_prescribed):
     print("=" * 60)
 
     material = PlaneStress(E=E_YOUNG, nu=NU_POISSON)
-    C_mat = material.tangent(dim=2)
+    C_mat = linear_elastic_C(PLANE_STRESS)
     dof_map = DOFMap(mesh.n_nodes, n_components=2)
     n_dof = dof_map.n_total
 
@@ -329,6 +360,113 @@ def assemble_internal_force_and_tangent(mesh, dof_map, u, material, plane_stress
 
 
 # ====================================================================
+# PK2 / B-MATRIX FORMULATION (2nd Piola-Kirchhoff + Green-Lagrange)
+# ====================================================================
+def build_B_grad(dN_dX):
+    """B_nabla (4, 2n): nodal increments -> [u,X ; v,Y ; u,Y ; v,X]."""
+    n = dN_dX.shape[0]
+    Bg = np.zeros((4, 2 * n))
+    for a in range(n):
+        Nx, Ny = dN_dX[a, 0], dN_dX[a, 1]
+        Bg[0, 2 * a]     = Nx
+        Bg[1, 2 * a + 1] = Ny
+        Bg[2, 2 * a]     = Ny
+        Bg[3, 2 * a + 1] = Nx
+    return Bg
+
+
+def build_A_L(grad_u):
+    """A_L (3, 4): displacement-gradient vector -> Green-Lagrange Voigt."""
+    uX, uY = grad_u[0, 0], grad_u[0, 1]
+    vX, vY = grad_u[1, 0], grad_u[1, 1]
+    return np.array([
+        [1.0 + uX, 0.0,      0.0,       vX      ],
+        [0.0,      1.0 + vY, uY,        0.0     ],
+        [uY,       vX,       1.0 + uX,  1.0 + vY],
+    ])
+
+
+def build_S_bar(S_voigt):
+    """S_bar (4, 4) initial-stress matrix from 2nd PK [S_XX, S_YY, S_XY]."""
+    Sxx, Syy, Sxy = S_voigt
+    return np.array([
+        [Sxx, 0.0, Sxy, 0.0],
+        [0.0, Syy, 0.0, Sxy],
+        [Sxy, 0.0, Syy, 0.0],
+        [0.0, Sxy, 0.0, Sxx],
+    ])
+
+
+def assemble_internal_force_and_tangent_pk2(mesh, dof_map, u, material,
+                                            plane_stress=True):
+    """
+    Total Lagrangian assembly in the B-matrix (PK2) form:
+        f_int = ∫ B_L^T S dV0
+        K_T   = ∫ B_L^T C B_L dV0 + ∫ B_grad^T S_bar B_grad dV0
+    with (S, C) the 2nd PK stress and Lagrangian tangent from the material.
+    Equivalent to assemble_internal_force_and_tangent (PK1).
+    """
+    n_dof = dof_map.n_total
+    f_int = np.zeros(n_dof)
+    rows, cols, vals = [], [], []
+    disp = u.reshape(-1, 2)
+
+    for block in mesh.element_blocks:
+        ref = get_element(block.etype)
+        qpts, qwts = get_quadrature(block.etype)
+        for e in range(block.connectivity.shape[0]):
+            enodes = block.connectivity[e]
+            coords = mesh.nodes[enodes]
+            u_elem = disp[enodes]
+            edofs = dof_map.element_dofs(enodes)
+            n_el_dof = len(edofs)
+            fe_int = np.zeros(n_el_dof)
+            ke_t = np.zeros((n_el_dof, n_el_dof))
+
+            for qp, qw in zip(qpts, qwts):
+                N, dN_dxi = ref.evaluate(qp)
+                J_ref = dN_dxi.T @ coords
+                detJ_ref = abs(np.linalg.det(J_ref))
+                dN_dX = dN_dxi @ np.linalg.inv(J_ref)
+
+                grad_u = u_elem.T @ dN_dX
+                F = np.eye(2) + grad_u
+
+                S_voigt, C_voigt, _ = material.pk2_voigt_and_tangent_2d(
+                    F, plane_stress)
+
+                B_grad = build_B_grad(dN_dX)
+                B_L = build_A_L(grad_u) @ B_grad
+                S_bar = build_S_bar(S_voigt)
+
+                w = detJ_ref * qw * THICKNESS
+                fe_int += (B_L.T @ S_voigt) * w
+                ke_t   += (B_L.T @ C_voigt @ B_L) * w
+                ke_t   += (B_grad.T @ S_bar @ B_grad) * w
+
+            for il, ig in enumerate(edofs):
+                f_int[ig] += fe_int[il]
+                for jl, jg in enumerate(edofs):
+                    rows.append(ig); cols.append(jg); vals.append(ke_t[il, jl])
+
+    K_T = sparse.csr_matrix((np.array(vals), (np.array(rows), np.array(cols))),
+                            shape=(n_dof, n_dof))
+    return f_int, K_T
+
+
+def assemble_nonlinear(mesh, dof_map, u, material, plane_stress=True):
+    """Dispatch to the active formulation (see FORMULATION)."""
+    if FORMULATION == "pk1":
+        return assemble_internal_force_and_tangent(
+            mesh, dof_map, u, material, plane_stress)
+    elif FORMULATION == "pk2":
+        return assemble_internal_force_and_tangent_pk2(
+            mesh, dof_map, u, material, plane_stress)
+    else:
+        raise ValueError(f"Unknown FORMULATION '{FORMULATION}' (use 'pk1'/'pk2')")
+
+
+# ====================================================================
 # NEWTON-RAPHSON WITH DISPLACEMENT CONTROL
 # ====================================================================
 def check_detF(mesh, dof_map, u):
@@ -354,6 +492,8 @@ def solve_nonlinear(mesh, material, u_total, n_steps, plane_stress=True):
     print("\n" + "=" * 60)
     print("NONLINEAR (NEO-HOOKEAN) ANALYSIS")
     print("=" * 60)
+    print(f"  Idealisation: {'plane stress' if plane_stress else 'plane strain'}")
+    print(f"  Formulation:  {FORMULATION}")
 
     dof_map = DOFMap(mesh.n_nodes, n_components=2)
     n_dof = dof_map.n_total
@@ -365,31 +505,26 @@ def solve_nonlinear(mesh, material, u_total, n_steps, plane_stress=True):
     fixed_dofs = []
     for nid in left:
         fixed_dofs.extend([2 * nid, 2 * nid + 1])
+
+    # # enforce midline symmetry: uy = 0 on y = H/2 (kills the bow, keeps necking)
+    # mid = np.where(np.abs(mesh.nodes[:, 1] - H / 2.0) < 1e-6)[0]
+    fixed_dofs.extend(int(2 * nid + 1) for nid in mid)
+
     fixed_dofs = np.array(fixed_dofs)
 
     prescribed_dofs = {2 * nid: u_total for nid in right}
-
-    ###########################################################################
-    # # Add symmetry constraint at midline: the following 4 lines of code are hardcoded for this specific geometry and mesh, to enforce symmetry
-    # tol_mid = 0.01
-    # midline_nodes = np.where(np.abs(mesh.nodes[:, 1] - H / 2.0) < tol_mid)[0]
-    
-    # # Add to fixed_dofs (uy = 0 at midline)
-    # midline_uy_dofs = [2 * nid + 1 for nid in midline_nodes]
-    # fixed_dofs = np.append(fixed_dofs, midline_uy_dofs).astype(int)
-    ###########################################################################
 
     all_constrained = np.union1d(fixed_dofs, np.array(list(prescribed_dofs.keys())))
     free_dofs = np.array([d for d in range(n_dof) if d not in all_constrained])
 
     # Wrap assembly into callables
     def f_int_fn(u):
-        f_int, _ = assemble_internal_force_and_tangent(
+        f_int, _ = assemble_nonlinear(
             mesh, dof_map, u, material, plane_stress)
         return f_int
 
     def K_T_fn(u):
-        _, K_T = assemble_internal_force_and_tangent(
+        _, K_T = assemble_nonlinear(
             mesh, dof_map, u, material, plane_stress)
         return K_T
 
@@ -547,10 +682,16 @@ def plot_stress_comparison(mesh, u_lin, u_nl, material_lin, material_nl):
 
 
 def compute_von_mises(mesh, u, material, is_linear=True):
-    """Compute nodal von Mises stress (element-averaged at nodes)."""
+    """Compute nodal von Mises stress (element-averaged at nodes).
+
+    Uses the full 3D stress: σ₃₃ = 0 for plane stress, and
+    σ₃₃ = ν(σ₁₁+σ₂₂) (linear) / the material's out-of-plane stress
+    (nonlinear) for plane strain.
+    """
     disp = u.reshape(-1, 2)
     vm_sum = np.zeros(mesh.n_nodes)
     count = np.zeros(mesh.n_nodes)
+    C_mat = linear_elastic_C(PLANE_STRESS) if is_linear else None
 
     for block in mesh.element_blocks:
         ref = get_element(block.etype)
@@ -561,8 +702,7 @@ def compute_von_mises(mesh, u, material, is_linear=True):
             coords = mesh.nodes[enodes]
             u_elem = disp[enodes]
 
-            # Average stress at element centroid
-            sigma_avg = np.zeros((2, 2))
+            sigma_avg = np.zeros((3, 3))   # full 3D stress (with σ₃₃)
             total_w = 0.0
 
             for qp, qw in zip(qpts, qwts):
@@ -571,28 +711,28 @@ def compute_von_mises(mesh, u, material, is_linear=True):
                 detJ = abs(np.linalg.det(J))
                 dN_dX = dN_dxi @ np.linalg.inv(J)
 
+                sigma = np.zeros((3, 3))
                 if is_linear:
-                    # Small strain Cauchy stress
-                    C_mat = material.tangent(dim=2)
                     B = build_B_matrix(dN_dX)
-                    strain_voigt = B @ u_elem.ravel()
-                    stress_voigt = C_mat @ strain_voigt
-                    sigma = np.array([
-                        [stress_voigt[0], stress_voigt[2]],
-                        [stress_voigt[2], stress_voigt[1]],
-                    ])
+                    sv = C_mat @ (B @ u_elem.ravel())
+                    sigma[0, 0], sigma[1, 1], sigma[0, 1] = sv[0], sv[1], sv[2]
+                    sigma[1, 0] = sv[2]
+                    if not PLANE_STRESS:
+                        sigma[2, 2] = NU_POISSON * (sv[0] + sv[1])
                 else:
                     F = compute_deformation_gradient(dN_dX, u_elem)
-                    sigma = material.cauchy_stress_2d(F, plane_stress=True)
+                    # NeoHookeanDecoupled.cauchy_stress_2d returns full 3x3
+                    sigma = material.cauchy_stress_2d(F, plane_stress=PLANE_STRESS)
 
                 sigma_avg += sigma * detJ * qw
                 total_w += detJ * qw
 
             sigma_avg /= total_w
 
-            # Von Mises (plane stress: σ₃₃ = 0)
-            s11, s22, s12 = sigma_avg[0, 0], sigma_avg[1, 1], sigma_avg[0, 1]
-            vm = np.sqrt(s11**2 + s22**2 - s11*s22 + 3*s12**2)
+            s11, s22, s33 = sigma_avg[0, 0], sigma_avg[1, 1], sigma_avg[2, 2]
+            s12 = sigma_avg[0, 1]
+            vm = np.sqrt(0.5 * ((s11 - s22)**2 + (s22 - s33)**2 + (s33 - s11)**2)
+                         + 3.0 * s12**2)
 
             for nid in enodes:
                 vm_sum[nid] += vm
@@ -631,11 +771,12 @@ def main():
     print(f"  Geometry: {L} x {H} m, thickness = {THICKNESS} m")
     print(f"  Material: E = {E_YOUNG/1e9:.0f} GPa, ν = {NU_POISSON}")
     print(f"  Prescribed displacement: ū = {U_PRESCRIBED} m")
+    print(f"  Idealisation: {'plane stress' if PLANE_STRESS else 'plane strain'}")
 
-    # Material parameters
+    # Material parameters (decoupled Neo-Hookean: μ shear, K bulk)
     mu = E_YOUNG / (2.0 * (1.0 + NU_POISSON))
-    lam = E_YOUNG * NU_POISSON / ((1.0 + NU_POISSON) * (1.0 - 2.0 * NU_POISSON))
-    print(f"  Neo-Hookean: μ = {mu/1e9:.4f} GPa, λ = {lam/1e9:.4f} GPa")
+    K_bulk = E_YOUNG / (3.0 * (1.0 - 2.0 * NU_POISSON))
+    print(f"  Neo-Hookean: μ = {mu/1e9:.4f} GPa, K = {K_bulk/1e9:.4f} GPa")
 
     # Mesh
     print("\n--- Mesh ---")
@@ -649,14 +790,14 @@ def main():
     u_lin, disp_lin, umag_lin, rx_lin = solve_linear(mesh, U_PRESCRIBED)
 
 
-    # Neo-Hookean nonlinear solve
-    material_nl = NeoHookean(mu=mu, lam=lam)
+    # Neo-Hookean nonlinear solve (decoupled deviatoric-volumetric model)
+    material_nl = NeoHookeanDecoupled.from_E_nu(E=E_YOUNG, nu=NU_POISSON)
 
 
     # ── Tangent verification (run once, then remove) ──
     print("\n  Verifying material tangent with finite differences...")
     F_test = np.array([[1.02, 0.01], [0.005, 0.99]])
-    P0, A_analytical, _ = material_nl.pk1_stress_and_tangent_2d(F_test, plane_stress=True)
+    P0, A_analytical, _ = material_nl.pk1_stress_and_tangent_2d(F_test, plane_stress=PLANE_STRESS)
 
     A_numerical = np.zeros((2, 2, 2, 2))
     eps = 1e-7
@@ -664,11 +805,11 @@ def main():
         for L_idx in range(2):
             F_plus = F_test.copy()
             F_plus[k, L_idx] += eps
-            P_plus, _ = material_nl.pk1_stress_2d(F_plus, plane_stress=True)
+            P_plus, _ = material_nl.pk1_stress_2d(F_plus, plane_stress=PLANE_STRESS)
 
             F_minus = F_test.copy()
             F_minus[k, L_idx] -= eps
-            P_minus, _ = material_nl.pk1_stress_2d(F_minus, plane_stress=True)
+            P_minus, _ = material_nl.pk1_stress_2d(F_minus, plane_stress=PLANE_STRESS)
 
             A_numerical[:, :, k, L_idx] = (P_plus - P_minus) / (2.0 * eps)
 
@@ -681,9 +822,19 @@ def main():
     else:
         print("    Tangent OK")
 
+    # ── PK1 vs PK2 element-assembly cross-check ──
+    dof_map = DOFMap(mesh.n_nodes, n_components=2)
+    rng = np.random.default_rng(0)
+    u_rand = 1e-3 * rng.standard_normal(dof_map.n_total)
+    f1, K1 = assemble_internal_force_and_tangent(mesh, dof_map, u_rand, material_nl, PLANE_STRESS)
+    f2, K2 = assemble_internal_force_and_tangent_pk2(mesh, dof_map, u_rand, material_nl, PLANE_STRESS)
+    rel_f = np.linalg.norm(f1 - f2) / max(np.linalg.norm(f1), 1e-30)
+    rel_K = sparse.linalg.norm(K1 - K2) / max(sparse.linalg.norm(K1), 1e-30)
+    print(f"  PK1 vs PK2: rel |df_int| = {rel_f:.2e}, rel |dK_T| = {rel_K:.2e}")
+
 
     u_hist_nl, rx_hist_nl, load_fracs_nl = solve_nonlinear(
-        mesh, material_nl, U_PRESCRIBED, N_LOAD_STEPS, plane_stress=True
+        mesh, material_nl, U_PRESCRIBED, N_LOAD_STEPS, plane_stress=PLANE_STRESS
     )
     u_nl_final = u_hist_nl[-1]
 
@@ -699,8 +850,9 @@ def main():
           f"Reaction = {rx_hist_nl[-1]/1e3:.2f} kN")
     print(f"  Reaction ratio (NL/Lin): {rx_hist_nl[-1]/rx_lin:.4f}")
 
-    # Material type for stress computation
-    material_lin = PlaneStress(E=E_YOUNG, nu=NU_POISSON)
+    # Linear stress is computed from linear_elastic_C(PLANE_STRESS) inside
+    # compute_von_mises, so no separate material object is needed here.
+    material_lin = None
 
     # Plots
     plot_force_displacement(u_lin, rx_lin, u_hist_nl, rx_hist_nl, load_fracs_nl)

@@ -24,7 +24,6 @@ Prerequisites:
         cd projects/nsf_domain_mapping
         python Main_nsf.py   (with shape_distribution = {"FourierBlob": 1.0})
 
-Place at:  examples/fem/blob_mapped_elasticity.py
 Run:       python examples/fem/blob_mapped_elasticity.py
 """
 

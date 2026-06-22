@@ -67,10 +67,10 @@
     "code_reg": 0.001
   },
   "pipeline": {
-    "generate_data": true,
-    "train_stage1": true,
-    "train_stage2": true,
-    "evaluate": true,
+    "generate_data": false,
+    "train_stage1": false,
+    "train_stage2": false,
+    "evaluate": false,
     "visualize": true,
     "n_visualizations": 5
   },

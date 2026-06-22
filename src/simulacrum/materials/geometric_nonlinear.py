@@ -197,6 +197,44 @@ class StVenantKirchhoff(Material):
         return P, A, 1.0
 
     # -----------------------------------------------------------------
+    # 2nd Piola-Kirchhoff stress and material tangent in Voigt form
+    # (for the B-matrix / Total Lagrangian formulation)
+    # -----------------------------------------------------------------
+
+    def pk2_voigt_and_tangent_2d(self, F, plane_stress=True):
+        """
+        2nd Piola-Kirchhoff stress and material tangent in Voigt notation.
+
+        Intended for the B-matrix Total Lagrangian formulation:
+
+            S_voigt = [S_XX, S_YY, S_XY]   (2nd PK stress)
+            C_voigt = dS/dE                (3x3 Voigt material tangent)
+
+        For St. Venant-Kirchhoff the law is linear in the Green-Lagrange
+        strain, S = C:E, so the material tangent C_voigt is the *constant*
+        plane-stress elasticity matrix. All displacement dependence enters
+        the element matrices through B_L (via A_L) and the geometric term.
+
+        Args:
+            F: (2, 2) deformation gradient
+            plane_stress: if True, use the plane-stress C matrix
+
+        Returns:
+            S_voigt: (3,) [S_XX, S_YY, S_XY]
+            C_voigt: (3, 3) material tangent dS/dE in Voigt form
+        """
+        E_gl = self._green_lagrange_2d(F)
+        E_voigt = self._E_to_voigt(E_gl)
+
+        if plane_stress:
+            C_mat = self._plane_stress_C()
+        else:
+            raise NotImplementedError("Plane strain SVK not yet implemented")
+
+        S_voigt = C_mat @ E_voigt
+        return S_voigt, C_mat
+
+    # -----------------------------------------------------------------
     # Cauchy stress
     # -----------------------------------------------------------------
 
