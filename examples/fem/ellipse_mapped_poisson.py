@@ -525,6 +525,44 @@ def plot_mesh(mesh, a, b, title=None):
     plt.show()
     print("Saved poisson_mesh_{}.png".format(etype))
 
+def plot_reference_square_mesh(mesh_sq, title=None):
+    """Plot the structured Quad4 mesh on the reference square  □ = (-1,1)^2
+    (the computational mesh of the pullback/mapped FEM, before ψ maps it to Ω)."""
+    from matplotlib.collections import PolyCollection
+
+    nd = mesh_sq.nodes
+    conn = mesh_sq.element_blocks[0].connectivity
+    etype = mesh_sq.element_blocks[0].etype
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    # element shapes (same style as plot_mesh, works for quad4)
+    polys = [nd[conn[e]] for e in range(conn.shape[0])]
+    pc = PolyCollection(polys, edgecolors="steelblue", facecolors="none",
+                        linewidths=0.4, alpha=0.8)
+    ax.add_collection(pc)
+
+    # reference-square boundary  ∂□
+    ax.plot([-1, 1, 1, -1, -1], [-1, -1, 1, 1, -1], "k-", lw=2)
+
+    # boundary nodes (detected geometrically, so it works even if
+    # mesh_sq.boundary_tags is empty)
+    on_bnd = (np.abs(nd[:, 0]) > 1 - 1e-9) | (np.abs(nd[:, 1]) > 1 - 1e-9)
+    ax.plot(nd[on_bnd, 0], nd[on_bnd, 1], ".", color="red", ms=2, zorder=5)
+
+    ax.set_xlim(-1.15, 1.15)
+    ax.set_ylim(-1.15, 1.15)
+    ax.set_aspect("equal")
+    if title is None:
+        title = "{} reference mesh ({} elements, {} nodes)".format(
+            etype.upper(), mesh_sq.n_elements, mesh_sq.n_nodes)
+    ax.set_title(title)
+    plt.tight_layout()
+    plt.savefig(_FIG_DIR / "poisson_mesh_reference_square.png",
+                dpi=200, bbox_inches="tight")
+    plt.show()
+    print("Saved poisson_mesh_reference_square.png")
+    
 def main():
     print("=" * 60)
     print("MAPPED POISSON  (ψ: □ → Ω)")
@@ -537,6 +575,7 @@ def main():
     mesh_d, u_d = solve_direct(a, b, f_val)
     plot_mesh(mesh_d, a, b)
     mesh_sq, u_m, x_m, all_bnd = solve_mapped(mapping, a, b, f_val)
+    plot_reference_square_mesh(mesh_sq)          # <-- add this line
     visualise(mesh_d, u_d, mesh_sq, u_m, x_m, a, b, f_val, all_bnd)
     plot_individual_fields(mesh_d, u_d, mesh_sq, u_m, x_m, a, b, all_bnd)
 
