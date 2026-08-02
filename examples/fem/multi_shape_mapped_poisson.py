@@ -63,7 +63,7 @@ DEVICE = "cpu"
 _FIG_DIR = Path(__file__).resolve().parent / "Figures_multi_shape_poisson"
 _FIG_DIR.mkdir(exist_ok=True)
 
-N_SQUARE = 40
+N_SQUARE = 23
 MESH_LC = 0.05
 DIRECT_ETYPE = "quad4"       # "tri3" or "quad4"
 

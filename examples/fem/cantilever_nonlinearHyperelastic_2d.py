@@ -62,12 +62,12 @@ NU_POISSON = 0.3
 U_PRESCRIBED = 1.50  # m (horizontal, on right edge)
 
 # Mesh
-MESH_LC = 0.1
-ETYPE = "quad4"
+MESH_LC = 0.05
+ETYPE = "tri3"
 
 # Nonlinear solver
-N_LOAD_STEPS = 50        # number of increments
-NR_TOL = 1e-6            # Newton-Raphson tolerance (relative residual)
+N_LOAD_STEPS = 15        # number of increments
+NR_TOL = 1e-3            # Newton-Raphson tolerance (relative residual)
 NR_MAX_ITER = 50         # max Newton iterations per load step
 
 # Idealisation: False -> plane strain (the assignment), True -> plane stress
@@ -203,7 +203,7 @@ def solve_linear(mesh, u_prescribed):
                 N, dN_dxi = ref.evaluate(qp)
                 J = dN_dxi.T @ coords
                 detJ = abs(np.linalg.det(J))
-                dN_dx = dN_dxi @ np.linalg.inv(J)
+                dN_dx = dN_dxi @ np.linalg.inv(J).T
                 B = build_B_matrix(dN_dx)
                 ke += (B.T @ C_mat @ B) * detJ * qw * THICKNESS
             for il, ig in enumerate(edofs):
@@ -315,7 +315,7 @@ def assemble_internal_force_and_tangent(mesh, dof_map, u, material, plane_stress
                 N, dN_dxi = ref.evaluate(qp)
                 J_ref = dN_dxi.T @ coords
                 detJ_ref = abs(np.linalg.det(J_ref))
-                dN_dX = dN_dxi @ np.linalg.inv(J_ref)  # (n_nodes, 2)
+                dN_dX = dN_dxi @ np.linalg.inv(J_ref).T  # (n_nodes, 2)
 
                 # Deformation gradient
                 F = compute_deformation_gradient(dN_dX, u_elem)
@@ -427,7 +427,7 @@ def assemble_internal_force_and_tangent_pk2(mesh, dof_map, u, material,
                 N, dN_dxi = ref.evaluate(qp)
                 J_ref = dN_dxi.T @ coords
                 detJ_ref = abs(np.linalg.det(J_ref))
-                dN_dX = dN_dxi @ np.linalg.inv(J_ref)
+                dN_dX = dN_dxi @ np.linalg.inv(J_ref).T
 
                 grad_u = u_elem.T @ dN_dX
                 F = np.eye(2) + grad_u
@@ -482,7 +482,7 @@ def check_detF(mesh, dof_map, u):
             for qp, qw in zip(qpts, qwts):
                 N, dN_dxi = ref.evaluate(qp)
                 J_ref = dN_dxi.T @ coords
-                dN_dX = dN_dxi @ np.linalg.inv(J_ref)
+                dN_dX = dN_dxi @ np.linalg.inv(J_ref).T
                 F = compute_deformation_gradient(dN_dX, u_elem)
                 if np.linalg.det(F) <= 0:
                     return False
@@ -506,9 +506,6 @@ def solve_nonlinear(mesh, material, u_total, n_steps, plane_stress=True):
     for nid in left:
         fixed_dofs.extend([2 * nid, 2 * nid + 1])
 
-    # # enforce midline symmetry: uy = 0 on y = H/2 (kills the bow, keeps necking)
-    # mid = np.where(np.abs(mesh.nodes[:, 1] - H / 2.0) < 1e-6)[0]
-    fixed_dofs.extend(int(2 * nid + 1) for nid in mid)
 
     fixed_dofs = np.array(fixed_dofs)
 
@@ -709,7 +706,7 @@ def compute_von_mises(mesh, u, material, is_linear=True):
                 N, dN_dxi = ref.evaluate(qp)
                 J = dN_dxi.T @ coords
                 detJ = abs(np.linalg.det(J))
-                dN_dX = dN_dxi @ np.linalg.inv(J)
+                dN_dX = dN_dxi @ np.linalg.inv(J).T
 
                 sigma = np.zeros((3, 3))
                 if is_linear:

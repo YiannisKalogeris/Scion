@@ -1,7 +1,7 @@
 {
-  "mse_interior": 3.1719157695770264,
-  "mse_boundary": 4.250309467315674,
-  "jacobian_min": 0.08230748772621155,
-  "jacobian_max": 2.6033637523651123,
-  "mse_interior_std": 0.0
+  "mse_interior": 0.0993857353401836,
+  "mse_boundary": 0.21209505056031047,
+  "jacobian_min": 0.4843880236148834,
+  "jacobian_max": 1.4088475704193115,
+  "mse_interior_std": 0.20199317442213688
 }

@@ -1,11 +1,7 @@
 """
 Neural Spline Flow for Diffeomorphism Learning
 
-This implementation uses Rational-Quadratic Splines (from Neural Spline Flows paper)
-to guarantee positive Jacobian determinants by construction.
-
-Key insight: Monotonic splines have positive derivatives, so the Jacobian
-determinant (product of derivatives in coupling layers) is always positive.
+This implementation uses Rational-Quadratic Splines (from Neural Spline Flows paper).
 
 Reference: Durkan et al., "Neural Spline Flows", NeurIPS 2019
 """

@@ -51,9 +51,9 @@ from models.neural_spline_flow import NeuralSplineFlow, NSFMapping
 
 _SCRIPT_DIR = Path(__file__).parent
 
-DATA_DIR = _SCRIPT_DIR / "data_fourierBlob"                 #"data"
-CHECKPOINT_DIR = _SCRIPT_DIR / "checkpoints_fourierBlob" #"checkpoints_nsf"
-OUTPUT_DIR = _SCRIPT_DIR / "outputs_fourierBlob"         #"outputs_nsf"
+DATA_DIR = _SCRIPT_DIR / "data_fourierBlob"                 #"data_ellipse", "data_fourierBlob"
+CHECKPOINT_DIR = _SCRIPT_DIR / "checkpoints_fourierBlob" #"checkpoints_ellipse", "checkpoints_fourierBlob"
+OUTPUT_DIR = _SCRIPT_DIR / "outputs_fourierBlob"         #"outputs_ellipse", "outputs_fourierBlob"
 
 DEVICE = 'cuda' if torch.cuda.is_available() else \
          'mps'  if torch.backends.mps.is_available() else 'cpu'
@@ -64,9 +64,9 @@ SEED = 42
 # Data Generation Settings
 # -----------------------------------------------------------------------------
 DATA_CONFIG = {
-    "n_train": 5,
-    "n_val": 1,
-    "n_test": 1,
+    "n_train": 500,
+    "n_val": 10,
+    "n_test": 10,
     "image_size": 64,
     "n_interior_points": 1024,
     "n_boundary_points": 256,
@@ -85,7 +85,7 @@ MODEL_CONFIG = {
     "n_hidden": 3,
     "domain_bounds": (-1.05, 1.05),
     "codomain_bounds": (-2.5, 2.5),
-    "latent_dim": 3,
+    "latent_dim": 6,
     "image_size": 64,
 }
 
@@ -94,8 +94,8 @@ MODEL_CONFIG = {
 # -----------------------------------------------------------------------------
 STAGE1_CONFIG = {
     "n_epochs": 8000,
-    "batch_size": 16,
-    "learning_rate_flow": 3e-4,
+    "batch_size": 50,
+    "learning_rate_flow": 1e-3,
     "learning_rate_codes": 1e-2,
     "weight_decay": 1e-4,
     "grad_clip": 1.0,
@@ -116,19 +116,19 @@ STAGE1_CONFIG = {
 # Stage 2: Encoder Training
 # -----------------------------------------------------------------------------
 STAGE2_CONFIG = {
-    "n_epochs": 2000,
+    "n_epochs": 4000,
     "batch_size": 32,
     "learning_rate": 1e-3,
     "weight_decay": 1e-5,
     "grad_clip": 1.0,
 
     # Loss: encoder prediction error + mapping quality
-    "lambda_code": 1.0,       # ||Enc(I) - z_i||²
-    "lambda_mapping": 0.1,    # mapping MSE using predicted z
+    "lambda_code": 0.1,       # ||Enc(I) - z_i||²
+    "lambda_mapping": 0.5,    # mapping MSE using predicted z
     "lambda_boundary": 0.5,   # boundary mapping MSE
 
     "validate_every": 20,
-    "early_stopping_patience": 30,
+    "early_stopping_patience": 200,
 }
 
 # Settings for test-time fitting (fallback, used in Stage 1 validation)

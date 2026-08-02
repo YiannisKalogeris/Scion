@@ -72,7 +72,7 @@ DEVICE = "cpu"   # use "mps" or "cuda" if available
 _FIG_DIR = Path(__file__).resolve().parent / "Figures_blob_mapped_elasticity"
 _FIG_DIR.mkdir(exist_ok=True)
 
-N_SQUARE = 60               # elements per side on reference square
+N_SQUARE = 80               # elements per side on reference square
 MESH_LC = 0.02              # gmsh element size for direct solve
 DIRECT_ETYPE = "quad4"       # "tri3" or "quad4"
 

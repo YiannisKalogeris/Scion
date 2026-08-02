@@ -1,8 +1,8 @@
 {
   "data": {
-    "n_train": 5,
-    "n_val": 1,
-    "n_test": 1,
+    "n_train": 500,
+    "n_val": 10,
+    "n_test": 10,
     "image_size": 64,
     "n_interior_points": 1024,
     "n_boundary_points": 256,
@@ -28,13 +28,13 @@
       -2.5,
       2.5
     ],
-    "latent_dim": 3,
+    "latent_dim": 6,
     "image_size": 64
   },
   "stage1": {
     "n_epochs": 8000,
-    "batch_size": 16,
-    "learning_rate_flow": 0.0003,
+    "batch_size": 50,
+    "learning_rate_flow": 0.001,
     "learning_rate_codes": 0.01,
     "weight_decay": 0.0001,
     "grad_clip": 1.0,
@@ -49,16 +49,16 @@
     "early_stopping_patience": 50
   },
   "stage2": {
-    "n_epochs": 2000,
+    "n_epochs": 4000,
     "batch_size": 32,
     "learning_rate": 0.001,
     "weight_decay": 1e-05,
     "grad_clip": 1.0,
-    "lambda_code": 1.0,
-    "lambda_mapping": 0.1,
+    "lambda_code": 0.1,
+    "lambda_mapping": 0.5,
     "lambda_boundary": 0.5,
     "validate_every": 20,
-    "early_stopping_patience": 30
+    "early_stopping_patience": 200
   },
   "fit": {
     "n_steps": 200,
@@ -68,9 +68,9 @@
   },
   "pipeline": {
     "generate_data": false,
-    "train_stage1": true,
-    "train_stage2": true,
-    "evaluate": true,
+    "train_stage1": false,
+    "train_stage2": false,
+    "evaluate": false,
     "visualize": true,
     "n_visualizations": 5
   },

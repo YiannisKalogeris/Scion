@@ -76,7 +76,7 @@ class FEMAssembler(DiscretizationBase):
             N, dN_dxi = ref_elem.evaluate(qp)
             J = dN_dxi.T @ coords  # (dim, dim)
             detJ = np.linalg.det(J)
-            dN_dx = dN_dxi @ np.linalg.inv(J)  # (n_nodes, dim)
+            dN_dx = dN_dxi @ np.linalg.inv(J).T  # (n_nodes, dim)
 
             if self.n_components == 1:
                 # Scalar (Poisson-type): ke += B^T B * detJ * w

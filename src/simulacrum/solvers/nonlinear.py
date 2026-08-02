@@ -245,9 +245,8 @@ class DisplacementControl:
             frac = step / self.n_steps
             logger.info(f"Load step {step}/{self.n_steps} (frac={frac:.3f})")
 
-            # Apply displacement increment
-            for dof, du_val in self.du_prescribed.items():
-                u[dof] += du_val
+            # Apply displacement increment (with linearised predictor)
+            self._predictor(u)
 
             # Newton-Raphson
             converged, nr_iters, res_final = self._newton_step(u)
@@ -291,6 +290,26 @@ class DisplacementControl:
             step_info=step_info_list,
             completed=True,
         )
+    
+    def _predictor(self, u: np.ndarray) -> None:
+        """
+        Linearised (elastic) predictor for one displacement increment.
+        """
+        pid = self.prescribed_dof_ids
+        if len(pid) == 0:
+            return
+
+        du_p = np.array([self.du_prescribed[d] for d in pid])
+
+        K_dense = self.K_T(u).toarray()
+        K_ff = K_dense[np.ix_(self.free_dofs, self.free_dofs)]
+        rhs = -K_dense[np.ix_(self.free_dofs, pid)] @ du_p
+
+        u[pid] += du_p
+        try:
+            u[self.free_dofs] += np.linalg.solve(K_ff, rhs)
+        except np.linalg.LinAlgError:
+            logger.warning("Predictor: singular tangent — continuing without it")
 
     def _newton_step(self, u: np.ndarray) -> Tuple[bool, int, float]:
         """
@@ -315,15 +334,16 @@ class DisplacementControl:
             res_norm = np.linalg.norm(R[self.free_dofs])
             if nr_iter == 0:
                 res_norm_0 = max(res_norm, 1e-15)
+            scale = max(np.linalg.norm(f_int), 1e-15)
 
             rel_res = res_norm / res_norm_0
 
             logger.info(
                 f"    NR iter {nr_iter+1}: |R| = {res_norm:.4e}, "
-                f"rel = {rel_res:.4e}"
+                f"rel = {rel_res:.4e}, |R|/|f| = {res_norm/scale:.4e}"
             )
 
-            if rel_res < self.tol and nr_iter > 0:
+            if nr_iter > 0 and (rel_res < self.tol or res_norm / scale < self.tol):
                 logger.info(f"    Converged in {nr_iter+1} iterations")
                 return True, nr_iter + 1, res_norm
 
@@ -453,12 +473,16 @@ class LoadControl:
         load_fractions = [0.0]
         step_info_list = []
 
+        df_ext = self.f_ext_total / self.n_steps
+
         for step in range(1, self.n_steps + 1):
             frac = step / self.n_steps
             f_ext_step = frac * self.f_ext_total
 
             logger.info(f"Load step {step}/{self.n_steps} (frac={frac:.3f})")
 
+            self._predictor(u, df_ext)
+            
             converged, nr_iters, res_final = self._newton_step(u, f_ext_step)
 
             si = StepInfo(
@@ -495,6 +519,14 @@ class LoadControl:
             step_info=step_info_list,
             completed=True,
         )
+
+    def _predictor(self, u: np.ndarray, df_ext: np.ndarray) -> None:
+        """Linearised predictor: K_ff du_f = df_ext_f at the last converged state."""
+        K_ff = self.K_T(u).toarray()[np.ix_(self.free_dofs, self.free_dofs)]
+        try:
+            u[self.free_dofs] += np.linalg.solve(K_ff, df_ext[self.free_dofs])
+        except np.linalg.LinAlgError:
+            logger.warning("Predictor: singular tangent — continuing without it")
 
     def _newton_step(
         self, u: np.ndarray, f_ext: np.ndarray
