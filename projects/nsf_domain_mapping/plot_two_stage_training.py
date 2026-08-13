@@ -123,7 +123,7 @@ def code_table(fig, cx, cy, label, star=False, z=5):
         sp.set_edgecolor(C_TRAIN_E); sp.set_linewidth(1.1)
     a.set_title(label, fontsize=10, pad=3)
     a.set_xlabel(r"$d_z$", fontsize=9, labelpad=1)
-    a.text(-0.45, 0.3, r"$N_{train}$", transform=a.transAxes, fontsize=9,
+    a.text(-0.45, 0.3, r"$N_{shape}$", transform=a.transAxes, fontsize=9,
            rotation=90, va="center")
 
 
@@ -137,14 +137,14 @@ def main():
 
     # ---------------- STAGE 1 ----------------
     ax.text(0.015, 0.965,
-            r"$\bf{Stage\ 1}$ — Auto-decoder: jointly train flow $\theta$ and per-shape codes $\{z_i\}$",
+            r"$\bf{Stage\ 1}$ — Auto-decoder: jointly train flow $\boldsymbol{\theta}$ and per-shape codes $\{\boldsymbol{z}_i\}$",
             fontsize=13, va="center")
 
     deck(fig, 0.065, 0.75, "shape")
-    ax.text(0.075, 0.635, r"training shapes $\{\Omega_i\}_{i=1}^{N_{train}}$", ha="center", fontsize=10)
+    ax.text(0.075, 0.635, r"training shapes $\{\Omega_i\}_{i=1}^{N_{shape}}$", ha="center", fontsize=10)
 
     box(ax, 0.27, 0.87, 0.165, 0.085,
-        "harmonic-map\nground truth\n" + r"$\{(\boldsymbol{\xi}_i,\boldsymbol{x}_i)\}_{i=1}^{N_{train}}$",
+        "harmonic-map\nground truth\n" + r"$\{(\boldsymbol{\xi}_i,\boldsymbol{x}_i)\}_{i=1}^{N_{shape}}$",
         C_DATA, C_DATA_E, fs=10)
     code_table(fig, 0.27, 0.66, r"$\{\boldsymbol{z}_i\}$ (learnable)")
 

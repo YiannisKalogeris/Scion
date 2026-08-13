@@ -16,9 +16,6 @@ Prerequisites:
     Train the auto-decoder NSF on ellipses/superellipses:
         cd projects/nsf_domain_mapping
         python Main_nsf.py   (with shape_distribution: Ellipse + Superellipse)
-
-Place at:  examples/fem/multi_shape_mapped_poisson.py
-Run:       python examples/fem/multi_shape_mapped_poisson.py
 """
 
 import sys
@@ -59,12 +56,14 @@ from simulacrum.geometry.sdf import SDFRenderer
 CHECKPOINT_DIR = PROJECT_DIR / "checkpoints_ellipse"
 DATA_DIR = PROJECT_DIR / "data_ellipse"
 DEVICE = "cpu"
+DOUBLE_METRIC = False   # evaluate the flow in float64 when building the metric
 
 _FIG_DIR = Path(__file__).resolve().parent / "Figures_multi_shape_poisson"
 _FIG_DIR.mkdir(exist_ok=True)
 
-N_SQUARE = 23
+N_SQUARE = 30
 MESH_LC = 0.05
+QUAD_ORDER = 2        # points per direction for the pullback assembly only
 DIRECT_ETYPE = "quad4"       # "tri3" or "quad4"
 
 # Constant source term for Poisson
@@ -78,7 +77,7 @@ SEED = 42
 HIFI_TARGET_ELEMS = 40000     # high-fidelity reference solve ("ground truth")
 HIFI_ETYPE        = "quad4"     # robust element type for the fine reference mesh
 RELATIVE_L2       = True       # report ||e||_L2 / ||u_ref||_L2 (False => absolute, as in example 1)
-ERROR_CLIM = (0.0, 0.25) 
+#ERROR_CLIM = (0.0, 0.025) # only if i want my plots to be in a common range (otherwise auto-scaled)
 
 # ── Mapping source ──
 # Encoder is the primary path; if its checkpoint is absent we fall back to the stored
@@ -246,7 +245,7 @@ def precompute_metric(mapping, mesh):
     """Precompute G = F⁻¹ F⁻ᵀ |det F| and |det F| at all quadrature points."""
     block = mesh.element_blocks[0]
     ref = get_element(block.etype)
-    qpts, qwts = get_quadrature(block.etype)
+    qpts, qwts = get_quadrature(block.etype, order=QUAD_ORDER)
 
     all_y = []
     for e in range(block.connectivity.shape[0]):
@@ -255,27 +254,58 @@ def precompute_metric(mapping, mesh):
             N, _ = ref.evaluate(qp)
             all_y.append(N @ coords)
 
-    all_y = np.array(all_y, dtype=np.float32)
+    all_y = np.array(all_y, dtype=np.float64)
     print(f"    Metric at {len(all_y)} quadrature points ...")
 
-    y_t = torch.tensor(all_y, dtype=torch.float32, device=DEVICE)
+    # ── optionally run the flow in double for this pass ──────────────────
+    # det = ad - bc in float32 can cancel to exactly 0.0 even though the NSF
+    # guarantees det > 0, which makes torch.linalg.inv raise. Double precision
+    # removes the cancellation without clamping anything, so the real value is
+    # kept rather than replaced by a floor.
+    restore = []
+    dtype = torch.float32
+    if DOUBLE_METRIC:
+        dtype = torch.float64
+        mapping.model.double()
+        restore.append(lambda: mapping.model.float())
+        if hasattr(mapping, "z") and torch.is_tensor(mapping.z):
+            z_old = mapping.z
+            mapping.z = mapping.z.double()
+            restore.append(lambda mp=mapping, z=z_old: setattr(mp, "z", z))
 
-    with torch.no_grad():
-        x_phys = mapping.psi(y_t).cpu().numpy()
+    try:
+        y_t = torch.tensor(all_y, dtype=dtype, device=DEVICE)
 
-    F_t = mapping.jacobian_matrix(y_t)
-    detF = torch.det(F_t)
-    abs_detF = detF.abs()
-    F_inv = torch.linalg.inv(F_t)
-    G_t = torch.bmm(F_inv, F_inv.transpose(1, 2)) * abs_detF.unsqueeze(-1).unsqueeze(-1)
+        with torch.no_grad():
+            x_phys = mapping.psi(y_t).cpu().numpy()
 
-    G = G_t.detach().cpu().numpy()
-    abs_detF_np = abs_detF.detach().cpu().numpy()
+        F_t = mapping.jacobian_matrix(y_t)
+        detF = torch.det(F_t)
+        abs_detF = detF.abs()
+
+        det_np = detF.detach().cpu().numpy()
+        tiny = np.abs(det_np) < 1e-10
+        if tiny.any():
+            pts = all_y[tiny]
+            print(f"    {tiny.sum()} of {len(det_np)} quadrature points have "
+                  f"|det| < 1e-10  (min {np.abs(det_np).min():.3e})")
+            print(f"      max |xi|,|eta| there: {np.abs(pts).max(axis=0)}")
+
+        F_inv = torch.linalg.inv(F_t)
+        G_t = torch.bmm(F_inv, F_inv.transpose(1, 2)) \
+            * abs_detF.unsqueeze(-1).unsqueeze(-1)
+
+        G = G_t.detach().cpu().numpy().astype(np.float64)
+        abs_detF_np = abs_detF.detach().cpu().numpy().astype(np.float64)
+    finally:
+        for fn in reversed(restore):
+            fn()
 
     print(f"    det(Dψ) range: [{detF.min():.4f}, {detF.max():.4f}]  "
           f"({100*(detF>0).float().mean():.0f}% positive)")
 
-    return {"G": G, "detF": abs_detF_np, "x_phys": x_phys}
+    return {"G": G, "detF": abs_detF_np, "x_phys": x_phys,
+            "quad_order": QUAD_ORDER}
 
 
 # ====================================================================
@@ -286,7 +316,7 @@ def assemble_mapped_poisson(mesh, metric, f_val):
     from scipy import sparse
     block = mesh.element_blocks[0]
     ref = get_element(block.etype)
-    qpts, qwts = get_quadrature(block.etype)
+    qpts, qwts = get_quadrature(block.etype, order=metric["quad_order"])
     dof_map = DOFMap(mesh.n_nodes, 1)
     n_dof = dof_map.n_total
     rows, cols, vals = [], [], []
@@ -528,17 +558,48 @@ def _tri_conn(mesh):
     return conn
 
 
-def _interp_nodal(nodes, tri_conn, u, pts, fill=0.0):
-    """Linearly interpolate a P1 nodal field onto arbitrary points. Uses a Delaunay-based
-    interpolator (robust to the near-degenerate cells the mapped mesh can produce near the
-    boundary). Points outside the convex hull are filled with `fill` (the boundary value).
-    `tri_conn` is unused but kept for call-site compatibility."""
-    from scipy.interpolate import LinearNDInterpolator
-    v = LinearNDInterpolator(nodes, u, fill_value=np.nan)(pts)
-    mask = np.isnan(v)
-    if mask.any():
-        v = np.where(mask, fill, v)
-    return v, mask
+def diagnose_mapped_mesh(x_m, tri_conn, label=""):
+    """Why a mapped mesh fails to triangulate."""
+    a, b, c = x_m[tri_conn[:, 0]], x_m[tri_conn[:, 1]], x_m[tri_conn[:, 2]]
+    area = 0.5 * ((b[:, 0]-a[:, 0])*(c[:, 1]-a[:, 1])
+                  - (c[:, 0]-a[:, 0])*(b[:, 1]-a[:, 1]))
+    scale = np.abs(area).max()
+    n_dup = len(x_m) - len(np.unique(np.round(x_m.astype(np.float64), 12), axis=0))
+    print(f"    [{label}] duplicate nodes : {n_dup}")
+    print(f"    [{label}] inverted tris   : {(area < -1e-12*scale).sum()} / {len(area)}"
+          f"  ({100*(area < -1e-12*scale).mean():.1f}%)")
+    print(f"    [{label}] degenerate tris : {(np.abs(area) < 1e-9*scale).sum()}")
+    print(f"    [{label}] area ratio max/min(|.|) : "
+          f"{scale/max(np.abs(area).min(), 1e-30):.3e}")
+    return area
+
+def _interp_nodal(nodes, tri_conn, u, pts, fill=0.0, label=""):
+    """Linearly interpolate a nodal field onto arbitrary points, using the
+    ACTUAL mesh connectivity.
+    """
+    import matplotlib.tri as mtri
+    a, b, c = nodes[tri_conn[:, 0]], nodes[tri_conn[:, 1]], nodes[tri_conn[:, 2]]
+    area = 0.5 * ((b[:, 0]-a[:, 0])*(c[:, 1]-a[:, 1])
+                  - (c[:, 0]-a[:, 0])*(b[:, 1]-a[:, 1]))
+    bad = area <= 1e-10 * np.abs(area).max()
+
+    try:
+        triang = mtri.Triangulation(nodes[:, 0], nodes[:, 1], tri_conn)
+        if bad.any():
+            print(f"    warning{' '+label if label else ''}: masking "
+                  f"{bad.sum()}/{len(area)} folded or degenerate triangles "
+                  f"({100*bad.mean():.1f}%)")
+            triang.set_mask(bad)
+        vals = mtri.LinearTriInterpolator(triang, u)(pts[:, 0], pts[:, 1])
+        mask = np.ma.getmaskarray(vals)
+        return np.ma.filled(vals, fill), mask
+    except RuntimeError:
+        from scipy.interpolate import LinearNDInterpolator
+        print(f"    warning{' '+label if label else ''}: mesh triangulation "
+              f"invalid, falling back to Delaunay (accuracy degraded)")
+        v = LinearNDInterpolator(nodes, u, fill_value=np.nan)(pts)
+        mask = np.isnan(v)
+        return np.where(mask, fill, v), mask
 
 
 def l2_norm_on_mesh(mesh, nodal):
@@ -616,13 +677,17 @@ def plot_groundtruth_errors(shape, shape_idx, mesh_hi, u_hi,
 
     # (b) error maps, shared colour scale
     #err_max = max(err_d.max(), err_m.max(), 1e-30) #use if I want to scale to actual max error
+    '''    
     vmin, vmax = ERROR_CLIM
-    levels = np.linspace(vmin, vmax, 33)        # 32 bands over [0, 0.25]
+    levels = np.linspace(vmin, vmax, 33)        # 32 bands over [0, 0.25] uncomment this if I want to use a common error scale for all shapes
+    '''
+
+
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     ax = axes[0]
     #tcf = ax.tricontourf(tg_hi, err_d, levels=32, cmap="hot_r", vmin=0, vmax=err_max) #use if I want to use automatic error scales
-    tcf = ax.tricontourf(tg_hi, err_d, levels=levels, cmap="hot_r", extend="max")
+    tcf = ax.tricontourf(tg_hi, err_d, levels=32, cmap="hot_r", extend="max") #levels=levels for a common error scale for all shapes
     fig.colorbar(tcf, ax=ax, shrink=0.85)
     ax.plot(bp[:, 0], bp[:, 1], "k-", lw=1.5)
     ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_aspect("equal")
@@ -630,7 +695,7 @@ def plot_groundtruth_errors(shape, shape_idx, mesh_hi, u_hi,
 
     ax = axes[1]
     #tcf = ax.tricontourf(tg_hi, err_m, levels=32, cmap="hot_r", vmin=0, vmax=err_max)
-    tcf = ax.tricontourf(tg_hi, err_m, levels=levels, cmap="hot_r", extend="max")
+    tcf = ax.tricontourf(tg_hi, err_m, levels=32, cmap="hot_r", extend="max") #levels=levels for a common error scale for all shapes
     fig.colorbar(tcf, ax=ax, shrink=0.85)
     ax.plot(bp[:, 0], bp[:, 1], "k-", lw=1.5)
     ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_aspect("equal")
@@ -719,9 +784,9 @@ def main():
         u_dc = solve_direct_poisson(shape, mesh_dc)
         print(f"    Matched   : {mesh_dc.n_elements} {DIRECT_ETYPE} (direct) vs "
               f"{mesh_sq.n_elements} quad4 (mapped)")
-
         quad_conn = mesh_sq.element_blocks[0].connectivity
         tri_conn_m = np.vstack([quad_conn[:, [0, 1, 2]], quad_conn[:, [0, 2, 3]]])
+        diagnose_mapped_mesh(x_m, tri_conn_m, f"shape {i+1}")      # <-- add
         err_d, err_m, l2_d, l2_m = evaluate_errors(
             mesh_hi, u_hi, mesh_dc, u_dc, x_m, tri_conn_m, u_m)
         tag = "rel L2" if RELATIVE_L2 else "L2"

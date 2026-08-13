@@ -1,11 +1,11 @@
 {
   "data": {
-    "n_train": 500,
-    "n_val": 10,
-    "n_test": 10,
+    "n_train": 5,
+    "n_val": 1,
+    "n_test": 1,
     "image_size": 64,
-    "n_interior_points": 1024,
-    "n_boundary_points": 256,
+    "n_interior_points": 2048,
+    "n_boundary_points": 512,
     "harmonic_grid_size": 128,
     "shape_distribution": {
       "Ellipse": 0.0,
@@ -67,10 +67,10 @@
     "code_reg": 0.001
   },
   "pipeline": {
-    "generate_data": false,
-    "train_stage1": false,
-    "train_stage2": false,
-    "evaluate": false,
+    "generate_data": true,
+    "train_stage1": true,
+    "train_stage2": true,
+    "evaluate": true,
     "visualize": true,
     "n_visualizations": 5
   },

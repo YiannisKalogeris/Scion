@@ -26,6 +26,7 @@ Run:
 import sys
 import json
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 from pathlib import Path
@@ -58,7 +59,49 @@ _FIG_DIR.mkdir(exist_ok=True)
 
 N_SQUARE = 30
 DIRECT_ETYPE = "quad4"   # "tri3" or "quad4"
-MESH_LC  = 0.08
+MESH_LC  = 0.085
+
+QUAD_ORDER = 2        # points per direction for the pullback assembly
+
+# Report the relative L2 norm  ||u_h - u||_L2(Omega) / ||u||_L2(Omega)  in
+# addition to the nodal RMS already printed. Purely additive: with False the
+# output is byte-for-byte what it was before.
+#
+# The two measure different things. The nodal RMS is a mean over degrees of
+# freedom, weighted by node density; on the reference square that density is
+# the map's, not the physical domain's, so the direct and pullback rows of a
+# results table are not strictly comparable. The relative L2 is a genuine
+# integral, dimensionless, and is what the literature reports -- so it is the
+# number to quote in the paper even if the ranking does not change.
+REPORT_RELATIVE_L2 = True
+REL_L2_ORDER = 4      # quadrature per direction for the error integral only
+
+# Filled by _report_relative_l2 during the solves, read by the plotting
+# routines. Caching rather than recomputing matters here: the pullback norm
+# needs the NSF at its own quadrature points, and evaluating the flow twice
+# would be both slower and a chance for the printed and plotted numbers to
+# disagree -- which is exactly the failure the current figures already have.
+REL_L2 = {}
+
+# Report and plot the local anisotropy of the mapping,
+#     kappa_J(xi) = sigma_1 / sigma_2   of   J = D psi(xi),
+# the diagnostic defined in Remark 2 of the paper but not currently reported.
+# kappa = 1 is a locally conformal (angle-preserving) map; large values mean the
+# map stretches far more in one direction than the other, which makes A_geo
+# anisotropic and the discrete system worse conditioned.
+PLOT_ANISOTROPY = True
+ANISO_CLIP_PCT = 99.0   # colour scale is clipped here; kappa can be unbounded
+                        # at the corners of the square, where any square-to-
+                        # smooth-domain map degenerates, and a single such node
+                        # would otherwise flatten the whole colour range
+
+# The harmonic map is the target the flow was trained against, so comparing
+# their anisotropy separates "the map is inherently distorted" (kappa agrees)
+# from "the flow added distortion" (kappa_psi >> kappa_Phi). Costs one FD
+# Laplace solve, so it is behind a flag.
+COMPARE_HARMONIC_ANISOTROPY = True
+HARMONIC_GRID = 768          # must match what train_single_ellipse.py used
+HARMONIC_BOUNDS = (-2.1, 2.1)
 
 
 class NSFMappingWrapper:
@@ -176,6 +219,42 @@ def assemble_load_vector(mesh, dof_map, source_val, weight_fn=None):
     return f
 
 
+def _report_relative_l2(kind, a, b, **kw):
+    """Print the integral L2 error alongside the existing nodal RMS.
+
+    Imported lazily so that the script still runs unchanged if the module is
+    not on the path, and wrapped so that a failure here can never take down a
+    solve that has already succeeded.
+    """
+    if not REPORT_RELATIVE_L2:
+        return
+    try:
+        from simulacrum.postprocessing.error_norms import (
+            l2_error_direct, l2_error_pullback)
+    except ImportError:
+        print("  (relative L2 skipped: simulacrum.postprocessing.error_norms "
+              "not importable)")
+        return
+
+    fn = lambda X: u_exact(X[:, 0], X[:, 1], a, b)
+    try:
+        if kind == "direct":
+            e_abs, e_rel, e_inf = l2_error_direct(
+                kw["mesh"], kw["u"], fn, order=REL_L2_ORDER)
+        else:
+            e_abs, e_rel, e_inf = l2_error_pullback(
+                kw["mesh"], kw["u"], kw["mapping"], fn, order=REL_L2_ORDER)
+    except Exception as exc:                      # never break the solve
+        print(f"  (relative L2 failed: {exc})")
+        return
+
+    REL_L2[kind] = {"abs": e_abs, "rel": e_rel, "inf": e_inf}
+
+    print(f"  L2  error (integral, abs): {e_abs:.6e}")
+    print(f"  L2  error (integral, rel): {e_rel:.6e}   = {100*e_rel:.4f} %")
+    print(f"  Linf error (quadrature):   {e_inf:.6e}")
+
+
 def solve_direct(a, b, f_val):
     print("\n" + "=" * 60)
     print("DIRECT SOLVE ON ELLIPSE")
@@ -193,13 +272,14 @@ def solve_direct(a, b, f_val):
     u_ex = u_exact(mesh.nodes[:, 0], mesh.nodes[:, 1], a, b)
     print(f"  L2  error: {np.sqrt(np.mean((u - u_ex)**2)):.6e}")
     print(f"  Linf error: {np.max(np.abs(u - u_ex)):.6e}")
+    _report_relative_l2("direct", a, b, mesh=mesh, u=u)
     return mesh, u
 
 
 def precompute_metric(mapping, mesh, a, b):
     block = mesh.element_blocks[0]
     ref = get_element(block.etype)
-    qpts, qwts = get_quadrature(block.etype)
+    qpts, qwts = get_quadrature(block.etype, order=QUAD_ORDER)
 
     all_y = []
     for e in range(block.connectivity.shape[0]):
@@ -245,14 +325,14 @@ def precompute_metric(mapping, mesh, a, b):
     eig_min = np.array([np.linalg.eigvalsh(G[i]).min() for i in range(len(G))])
     print(f"  G min eigenvalue: {eig_min.min():.6e}  (must be > 0)")
 
-    return {"G": G, "detF": abs_detF_np, "x_phys": x_phys}
+    return {"G": G, "detF": abs_detF_np, "x_phys": x_phys, "quad_order": QUAD_ORDER}
 
 
 def assemble_mapped_system(mesh, metric, f_val):
     from scipy import sparse
     block = mesh.element_blocks[0]
     ref = get_element(block.etype)
-    qpts, qwts = get_quadrature(block.etype)
+    qpts, qwts = get_quadrature(block.etype, order=metric["quad_order"])
     dof_map = DOFMap(mesh.n_nodes, 1)
     n_dof = dof_map.n_total
     rows, cols, vals = [], [], []
@@ -323,6 +403,7 @@ def solve_mapped(mapping, a, b, f_val):
     linf = np.max(np.abs(u_sq[interior] - u_ex[interior]))
     print(f"  L2  error: {l2:.6e}")
     print(f"  Linf error: {linf:.6e}")
+    _report_relative_l2("pullback", a, b, mesh=sq, u=u_sq, mapping=mapping)
 
     return sq, u_sq, x_phys, all_bnd
 
@@ -365,7 +446,7 @@ def visualise(mesh_d, u_d, mesh_sq, u_m, x_m, a, b, f_val, all_bnd):
     tcf = ax.tricontourf(triang_d, err_d, levels=32, cmap="hot_r")
     fig.colorbar(tcf, ax=ax, shrink=0.8, label="|error|")
     ax.set_aspect("equal")
-    ax.set_title(f"Direct error (L2={np.sqrt(np.mean(err_d**2)):.2e})")
+    ax.set_title(f"Direct FEM error (L2={np.sqrt(np.mean(err_d**2)):.2e})")
 
     ax = axes[1, 1]
     tcf = ax.tricontourf(triang_sq, u_ex_m, levels=32, cmap="viridis")
@@ -376,7 +457,7 @@ def visualise(mesh_d, u_d, mesh_sq, u_m, x_m, a, b, f_val, all_bnd):
     tcf = ax.tricontourf(triang_m, err_m, levels=32, cmap="hot_r")
     fig.colorbar(tcf, ax=ax, shrink=0.8, label="|error|")
     ax.set_aspect("equal")
-    ax.set_title(f"Mapped error (L2={np.sqrt(np.mean(err_m**2)):.2e})")
+    ax.set_title(f"Pullback FEM error (L2={np.sqrt(np.mean(err_m**2)):.2e})")
 
     plt.suptitle(
         f"Poisson on ellipse (a={a}, b={b}): direct vs mapped FEM\n"
@@ -386,6 +467,176 @@ def visualise(mesh_d, u_d, mesh_sq, u_m, x_m, a, b, f_val, all_bnd):
     plt.savefig(_FIG_DIR / "ellipse_mapped_poisson.png", dpi=150)
     plt.show()
     print("Saved ellipse_mapped_poisson.png")
+
+def anisotropy(mapping, y):
+    """Singular values and condition number of J = D psi at points ``y``.
+
+    Returns ``(sigma1, sigma2, kappa)``, each ``(n,)``. For a 2x2 matrix the
+    singular values are available in closed form, but SVD is clearer and the
+    point count here is small.
+    """
+    y_t = torch.tensor(np.asarray(y, dtype=np.float32),
+                       dtype=torch.float32, device=DEVICE)
+    F = mapping.jacobian_matrix(y_t).detach().cpu().numpy()
+    sv = np.linalg.svd(F, compute_uv=False)      # descending
+    s1, s2 = sv[:, 0], sv[:, 1]
+    return s1, s2, s1 / np.maximum(s2, 1e-300)
+
+
+def plot_anisotropy(mapping, mesh_sq, x_m, a, b):
+    """kappa_J on the reference square and on the physical domain.
+
+    Two panels of the same field: the left shows where on the square the map is
+    distorted, which is what an adaptive reference mesh would need to know; the
+    right shows where in the ellipse that distortion lands, which is where the
+    solution error is expected to concentrate.
+
+    The colour scale is logarithmic because kappa is a ratio bounded below by 1
+    and typically spans an order of magnitude -- a linear scale hides the bulk
+    of the domain behind a few extreme cells.
+    """
+    if not PLOT_ANISOTROPY:
+        return
+
+    nodes = mesh_sq.nodes
+    s1, s2, kappa = anisotropy(mapping, nodes)
+
+    q = np.percentile(kappa, [50, 90, 99])
+    print(f"  anisotropy kappa_J = sigma1/sigma2 at {len(nodes)} nodes:")
+    print(f"    median {q[0]:.3f}   p90 {q[1]:.3f}   p99 {q[2]:.3f}   "
+          f"max {kappa.max():.3f}")
+    print(f"    sigma1 [{s1.min():.4f}, {s1.max():.4f}]   "
+          f"sigma2 [{s2.min():.4f}, {s2.max():.4f}]")
+
+    quad_conn = mesh_sq.element_blocks[0].connectivity
+    tri_conn = np.vstack([quad_conn[:, [0, 1, 2]], quad_conn[:, [0, 2, 3]]])
+    triang_sq = mtri.Triangulation(nodes[:, 0], nodes[:, 1], tri_conn)
+    triang_m = mtri.Triangulation(x_m[:, 0], x_m[:, 1], tri_conn)
+
+    vmax = max(float(np.percentile(kappa, ANISO_CLIP_PCT)), 1.01)
+    levels = np.logspace(0.0, np.log10(vmax), 33)
+    norm = matplotlib.colors.LogNorm(vmin=1.0, vmax=vmax)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    ax = axes[0]
+    tcf = ax.tricontourf(triang_sq, kappa, levels=levels, norm=norm,
+                         cmap="magma_r", extend="max")
+    fig.colorbar(tcf, ax=ax, shrink=0.85, label=r"$\kappa_J=\sigma_1/\sigma_2$")
+    ax.set_aspect("equal")
+    ax.set_title(r"Anisotropy on the reference square $\Omega^0$")
+
+    ax = axes[1]
+    tcf = ax.tricontourf(triang_m, kappa, levels=levels, norm=norm,
+                         cmap="magma_r", extend="max")
+    fig.colorbar(tcf, ax=ax, shrink=0.85, label=r"$\kappa_J=\sigma_1/\sigma_2$")
+    theta = np.linspace(0, 2 * np.pi, 400)
+    ax.plot(a * np.cos(theta), b * np.sin(theta), "k-", lw=1.2)
+    ax.set_aspect("equal")
+    ax.set_title(r"Anisotropy mapped to $\Omega$")
+
+    plt.suptitle(
+        r"Local anisotropy of $\psi:\Omega^0\to\Omega$   "
+        r"($\kappa_J=1$ is conformal)", fontsize=13)
+    plt.tight_layout()
+    plt.savefig(_FIG_DIR / "ellipse_anisotropy.png", dpi=150,
+                bbox_inches="tight")
+    plt.show()
+    print("Saved ellipse_anisotropy.png")
+
+def harmonic_anisotropy(shape, bounds, grid_size=512, n_pts=20000,
+                        h=2.0e-3, seed=0):
+    """kappa_J of the harmonic map, for comparison with the learned one.
+
+    Returns (x, xi, kappa): physical points, their square images, and the
+    condition number of D Phi there -- which equals that of D psi at xi.
+    """
+    from simulacrum.geometry.harmonic_maps import HarmonicMapSolver
+    from simulacrum.geometry.sdf import sample_points_in_shape
+
+    solver = HarmonicMapSolver(grid_size=grid_size, bounds=bounds)
+    solver.solve(shape)
+
+    rng = np.random.default_rng(seed)
+    x = sample_points_in_shape(shape, n_pts, bounds, rng)
+
+    dPhi = np.empty((len(x), 2, 2))
+    for i in range(2):
+        e = np.zeros(2); e[i] = h
+        dPhi[:, :, i] = (solver.evaluate(x + e) - solver.evaluate(x - e)) / (2 * h)
+
+    xi = solver.evaluate(x)
+    ok = np.isfinite(dPhi).all(axis=(1, 2)) & np.isfinite(xi).all(axis=1)
+    sv = np.linalg.svd(dPhi[ok], compute_uv=False)
+    return x[ok], xi[ok], sv[:, 0] / np.maximum(sv[:, 1], 1e-300)
+
+def visualise_relative_error(mesh_d, u_d, mesh_sq, u_m, x_m, a, b, all_bnd):
+    """Error maps for the direct and pullback solutions, titled with the
+    integral relative L2 error computed during the solves.
+
+    Differs from the error panels of `visualise` in three ways, each
+    deliberate:
+
+    * the title quotes ||u_h - u||_L2 / ||u||_L2 over the domain rather than a
+      nodal RMS, so it matches the console output and the paper's table;
+    * both panels share one colour scale, so the two fields can actually be
+      compared by eye -- with independent scales a 10x larger error can look
+      identical;
+    * the colour field is the pointwise |u_h - u| at the nodes, which is a
+      different object from the number in the title. That is normal, but the
+      labels say so explicitly.
+
+    Falls back to the nodal RMS in the titles when REPORT_RELATIVE_L2 is off.
+    """
+    nd = mesh_d.nodes
+    u_ex_d = u_exact(nd[:, 0], nd[:, 1], a, b)
+    u_ex_m = u_exact(x_m[:, 0], x_m[:, 1], a, b)
+    err_d = np.abs(u_d - u_ex_d)
+    err_m = np.abs(u_m - u_ex_m)
+
+    tri_d = mesh_d.element_blocks[0].connectivity
+    if mesh_d.element_blocks[0].etype == "quad4":
+        tri_d = np.vstack([tri_d[:, [0, 1, 2]], tri_d[:, [0, 2, 3]]])
+    triang_d = mtri.Triangulation(nd[:, 0], nd[:, 1], tri_d)
+
+    quad_conn = mesh_sq.element_blocks[0].connectivity
+    tri_conn = np.vstack([quad_conn[:, [0, 1, 2]], quad_conn[:, [0, 2, 3]]])
+    triang_m = mtri.Triangulation(x_m[:, 0], x_m[:, 1], tri_conn)
+
+    vmax = max(err_d.max(), err_m.max())
+    levels = np.linspace(0.0, vmax, 33)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    ax = axes[0]
+    tcf = ax.tricontourf(triang_d, err_d, levels=levels, cmap="hot_r")
+    fig.colorbar(tcf, ax=ax, shrink=0.85, label=r"$|u_h - u|$")
+    ax.set_aspect("equal")
+    ax.set_title(f"Direct FEM error  ({_err_label('direct', err_d)})")
+
+    ax = axes[1]
+    tcf = ax.tricontourf(triang_m, err_m, levels=levels, cmap="hot_r")
+    fig.colorbar(tcf, ax=ax, shrink=0.85, label=r"$|u_h - u|$")
+    ax.set_aspect("equal")
+    ax.set_title(f"Pullback FEM error  ({_err_label('pullback', err_m)})")
+
+    plt.suptitle(
+        f"Poisson on ellipse (a={a}, b={b}): pointwise error, shared scale",
+        fontsize=13)
+    plt.tight_layout()
+    plt.savefig(_FIG_DIR / "ellipse_relative_error.png", dpi=150,
+                bbox_inches="tight")
+    plt.show()
+    print("Saved ellipse_relative_error.png")
+
+
+def _err_label(kind, err_nodal):
+    """Title text for an error panel: integral relative L2 when available,
+    nodal RMS otherwise."""
+    if kind in REL_L2:
+        return f"rel. $L^2$ = {100 * REL_L2[kind]['rel']:.3f}%"
+    return f"nodal RMS = {np.sqrt(np.mean(err_nodal ** 2)):.2e}"
+
 
 def plot_individual_fields(mesh_d, u_d, mesh_sq, u_m, x_m, a, b, all_bnd):
     """Generate separate publication-quality plots for each solution field."""
@@ -577,13 +828,32 @@ def main():
     mesh_sq, u_m, x_m, all_bnd = solve_mapped(mapping, a, b, f_val)
     plot_reference_square_mesh(mesh_sq)          # <-- add this line
     visualise(mesh_d, u_d, mesh_sq, u_m, x_m, a, b, f_val, all_bnd)
-    plot_individual_fields(mesh_d, u_d, mesh_sq, u_m, x_m, a, b, all_bnd)
+    visualise_relative_error(mesh_d, u_d, mesh_sq, u_m, x_m, a, b, all_bnd)
+    plot_anisotropy(mapping, mesh_sq, x_m, a, b)
+    
 
+    if COMPARE_HARMONIC_ANISOTROPY:
+        shape = Ellipse(center=(0.0, 0.0), a=a, b=b, theta=0.0)
+        x_h, xi_h, kappa_h = harmonic_anisotropy(
+            shape, HARMONIC_BOUNDS, grid_size=HARMONIC_GRID)
+        _, _, kappa_nsf = anisotropy(mapping, xi_h)
+        q = lambda k: np.percentile(k, [50, 90, 99])
+        print("  kappa_J comparison at the same square points:")
+        print(f"    harmonic map : median {q(kappa_h)[0]:.3f}  "
+              f"p90 {q(kappa_h)[1]:.3f}  p99 {q(kappa_h)[2]:.3f}")
+        print(f"    learned NSF  : median {q(kappa_nsf)[0]:.3f}  "
+              f"p90 {q(kappa_nsf)[1]:.3f}  p99 {q(kappa_nsf)[2]:.3f}")
+        print(f"    ratio (NSF / harmonic), median "
+              f"{np.median(kappa_nsf / kappa_h):.3f}")    
+
+    plot_individual_fields(mesh_d, u_d, mesh_sq, u_m, x_m, a, b, all_bnd)
+    
     print("\nDONE")
 
 
 if __name__ == "__main__":
     main()
+
 
 
 

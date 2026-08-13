@@ -195,9 +195,15 @@ class DisplacementControl:
         max_iter: int = 30,
         line_search: bool = True,
         line_search_check: Optional[Callable[[np.ndarray], bool]] = None,
+        on_step_converged: Optional[Callable[[np.ndarray], None]] = None,
     ):
         self.f_int = internal_force_fn
         self.K_T = tangent_fn
+        # Called with the converged displacement at the end of every accepted
+        # step. Path-dependent materials need it: the plastic strain must be
+        # promoted from trial to committed exactly once per step, never on a
+        # Newton iterate that may still be discarded.
+        self.on_step_converged = on_step_converged
         self.n_dof = n_dof
         self.free_dofs = np.asarray(free_dofs)
         self.prescribed_dofs = prescribed_dofs
@@ -259,6 +265,9 @@ class DisplacementControl:
                 residual_final=res_final,
             )
             step_info_list.append(si)
+
+            if converged and self.on_step_converged is not None:
+                self.on_step_converged(u)
 
             if not converged:
                 logger.warning(f"Step {step} did not converge. Stopping.")
@@ -440,9 +449,11 @@ class LoadControl:
         max_iter: int = 30,
         line_search: bool = True,
         line_search_check: Optional[Callable[[np.ndarray], bool]] = None,
+        on_step_converged: Optional[Callable[[np.ndarray], None]] = None,
     ):
         self.f_int = internal_force_fn
         self.K_T = tangent_fn
+        self.on_step_converged = on_step_converged
         self.f_ext_total = f_ext
         self.n_dof = n_dof
         self.constrained_dofs = np.asarray(constrained_dofs)
@@ -493,6 +504,9 @@ class LoadControl:
                 residual_final=res_final,
             )
             step_info_list.append(si)
+
+            if converged and self.on_step_converged is not None:
+                self.on_step_converged(u)
 
             if not converged:
                 logger.warning(f"Step {step} did not converge. Stopping.")

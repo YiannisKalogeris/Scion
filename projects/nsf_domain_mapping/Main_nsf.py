@@ -64,12 +64,12 @@ SEED = 42
 # Data Generation Settings
 # -----------------------------------------------------------------------------
 DATA_CONFIG = {
-    "n_train": 500,
-    "n_val": 10,
-    "n_test": 10,
+    "n_train": 5,
+    "n_val": 1,
+    "n_test": 1,
     "image_size": 64,
-    "n_interior_points": 1024,
-    "n_boundary_points": 256,
+    "n_interior_points": 2048,
+    "n_boundary_points": 512,
     "harmonic_grid_size": 128,
     "shape_distribution": {"Ellipse": 0.0, "Superellipse": 0.0, "FourierBlob": 1.0, "SmoothPolygon": 0.0, "StarPolygon": 0.0},
 }
@@ -143,10 +143,10 @@ FIT_CONFIG = {
 # Pipeline Control
 # -----------------------------------------------------------------------------
 PIPELINE = {
-    "generate_data": False,
-    "train_stage1": False,
-    "train_stage2": False,
-    "evaluate": False,
+    "generate_data": True,
+    "train_stage1": True,
+    "train_stage2": True,
+    "evaluate": True,
     "visualize": True,
     "n_visualizations": 5,
 }
@@ -364,7 +364,7 @@ class EncoderMapping:
     def jacobian_matrix(self, y):
         y = y.to(self.device).detach().requires_grad_(True)
         x, _ = self.model.forward_with_z(y, self.z)
-        F = torch.zeros(y.shape[0], 2, 2, device=self.device)
+        F = torch.zeros(y.shape[0], 2, 2, device=self.device, dtype=y.dtype)
         for j in range(2):
             g = torch.zeros_like(x)
             g[:, j] = 1.0

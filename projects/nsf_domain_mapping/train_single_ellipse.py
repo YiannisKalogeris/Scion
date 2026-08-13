@@ -39,25 +39,25 @@ from neural_spline_flow import NeuralSplineFlow
 # ====================================================================
 ELLIPSE_A = 2.0
 ELLIPSE_B = 1.0
-BOUNDS = (-2.5, 2.5)
+BOUNDS = (-2.1, 2.1)
 
 MODEL_CONFIG = {
     "n_layers": 8,
-    "n_bins": 16,
+    "n_bins": 20,
     "hidden_dim": 128,
     "n_hidden": 3,
     # Domain is the SQUARE (input to forward pass)
     "domain_bounds": (-1.1, 1.1),
     # Codomain is the ELLIPSE region (output of forward pass)
-    "codomain_bounds": (-2.5, 2.5),
+    "codomain_bounds": (-2.1, 2.1),
 }
 
 TRAIN_CONFIG = {
-    "n_interior": 5000,
-    "n_boundary": 256,
-    "n_epochs": 5000,
-    "lr": 5e-4,
-    "lr_min": 1e-6,
+    "n_interior": 8000,
+    "n_boundary": 2048,
+    "n_epochs": 20000,
+    "lr": 1e-3,
+    "lr_min": 1e-5,
     "boundary_weight": 5.0,
     "logdet_weight": 0.001,
     "grad_clip": 1.0,
@@ -98,7 +98,7 @@ def generate_data():
     print("Generating ground truth data (reversed direction) ...")
 
     shape = Ellipse(center=(0.0, 0.0), a=ELLIPSE_A, b=ELLIPSE_B, theta=0.0)
-    solver = HarmonicMapSolver(grid_size=128, bounds=BOUNDS)
+    solver = HarmonicMapSolver(grid_size=768, bounds=BOUNDS)
     solver.solve(shape)
 
     # ── Interior: sample in ellipse, get harmonic map → square coords ──

@@ -48,14 +48,19 @@ def gauss_hex(n: int) -> tuple[np.ndarray, np.ndarray]:
 # Registry: element-type → default quadrature
 # =====================================================================
 
-def get_quadrature(etype: str, order: int | None = None) -> tuple[np.ndarray, np.ndarray]:
-    """Return default quadrature for a given element type."""
-    defaults = {
-        "line2": lambda: gauss_1d(2),
-        "tri3": lambda: gauss_triangle(1),
-        "quad4": lambda: gauss_quad(2),
-        "hex8": lambda: gauss_hex(2),
-    }
-    if etype not in defaults:
-        raise NotImplementedError(f"No default quadrature for '{etype}'")
-    return defaults[etype]()
+def get_quadrature(etype: str, order: int | None = None):
+    """Quadrature for an element type.
+
+    ``order`` is the number of points *per direction* for tensor-product
+    elements. The default integrates a Q1 stiffness matrix exactly on
+    parallelogram elements.
+    """
+    if etype == "line2":
+        return gauss_1d(order or 2)
+    if etype == "quad4":
+        return gauss_quad(order or 2)
+    if etype == "hex8":
+        return gauss_hex(order or 2)
+    if etype == "tri3":
+        return gauss_triangle(order or 1)
+    raise NotImplementedError(f"No default quadrature for '{etype}'")

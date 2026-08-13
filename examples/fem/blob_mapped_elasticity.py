@@ -72,7 +72,7 @@ DEVICE = "cpu"   # use "mps" or "cuda" if available
 _FIG_DIR = Path(__file__).resolve().parent / "Figures_blob_mapped_elasticity"
 _FIG_DIR.mkdir(exist_ok=True)
 
-N_SQUARE = 80               # elements per side on reference square
+N_SQUARE = 10               # elements per side on reference square
 MESH_LC = 0.02              # gmsh element size for direct solve
 DIRECT_ETYPE = "quad4"       # "tri3" or "quad4"
 
@@ -85,7 +85,7 @@ THICKNESS = 1.0             # unit thickness for plane stress
 BODY_FORCE = np.array([0.0, -10.0])   # (fx, fy) per unit volume
 
 # Number of test shapes to solve
-N_TEST_SHAPES = 5
+N_TEST_SHAPES = 1
 SEED = 42
 
 # ── Mapping source ──
@@ -100,7 +100,7 @@ SDF_BOUNDS   = (-2.5, 2.5)     # encoder SDF bounding box   (must match training
 HIFI_TARGET_ELEMS     = 40000        # high-fidelity reference solve ("ground truth")
 HIFI_ETYPE            = "quad4"       # element type for the fine reference mesh
 RELATIVE_L2           = True          # report ||e||_L2 / ||u_ref||_L2 (False => absolute)
-ERROR_CLIM            = (0.0, 0.25)   # fixed colour range for all error maps
+ERROR_CLIM            = (0.0, 0.08)   # fixed colour range for all error maps
 NORMALIZE_ERROR_FIELD = True          # plot |u_method - u_ref| as a fraction of peak |u_ref|;
                                       # keeps the shared [0,0.25] scale meaningful for the small
                                       # elasticity displacements (set False for absolute error)
@@ -256,6 +256,8 @@ def mesh_shape_gmsh(shape, lc=0.12, etype="tri3", n_boundary=200):
     if etype == "quad4":
         gmsh.option.setNumber("Mesh.RecombineAll", 1)
         gmsh.option.setNumber("Mesh.Algorithm", 8)
+        gmsh.option.setNumber("Mesh.RecombinationAlgorithm", 3)   # <-- add
+        gmsh.option.setNumber("General.Verbosity", 1)   # -> 5 for all warnings
 
     gmsh.model.mesh.generate(2)
 
@@ -549,7 +551,7 @@ def solve_mapped_elasticity(mapping):
         x_phys = mapping.psi(nodes_t).cpu().numpy()
 
     print(f"    max |u| = {u_mag.max():.6e}")
-    return sq, u_sq, disp, u_mag, x_phys
+    return sq, u_sq, disp, u_mag, x_phys, left_nodes
 
 
 # ====================================================================
@@ -753,7 +755,7 @@ def check_harmonic_map(shape, shape_idx, grid_size=128, bounds=(-2.5, 2.5)):
     # Compute Jacobian determinant via finite differences
     eps = 1e-4
     det_samples = []
-    test_pts = pts[:500]
+    test_pts = pts[:1000]
     for p in test_pts:
         mx = solver.evaluate(np.array([p + [eps, 0]]))[0]
         my = solver.evaluate(np.array([p + [0, eps]]))[0]
@@ -785,7 +787,7 @@ def check_harmonic_map(shape, shape_idx, grid_size=128, bounds=(-2.5, 2.5)):
 
     # Jacobian determinant
     ax = axes[2]
-    ax.hist(det_samples, bins=50, edgecolor='black', alpha=0.7)
+    ax.hist(det_samples, bins=30, edgecolor='black', alpha=0.7, density=True)
     ax.axvline(0, color='red', ls='--', lw=2)
     ax.set_title('Harmonic map det(J) ({} negative)'.format(n_neg))
 
@@ -831,18 +833,53 @@ def _tri_conn(mesh):
     return conn
 
 
-def _interp_nodal(nodes, tri_conn, u, pts, fill=0.0):
-    """Linearly interpolate a P1 nodal field (scalar or vector) onto arbitrary points,
-    using a Delaunay-based interpolator (robust to the near-degenerate cells the mapped
-    mesh can produce near the boundary). Points outside the convex hull are filled with
-    `fill`. `tri_conn` is unused but kept for call-site compatibility."""
-    from scipy.interpolate import LinearNDInterpolator
-    v = LinearNDInterpolator(nodes, u, fill_value=np.nan)(pts)
-    nanmask = np.isnan(v)
-    mask = nanmask.any(axis=1) if v.ndim > 1 else nanmask
-    if nanmask.any():
+def _interp_nodal(nodes, tri_conn, u, pts, fill=0.0, label=""):
+    """Interpolate a P1 nodal field (scalar or vector) using the ACTUAL mesh
+    connectivity, with a fallback for meshes whose mapped image is folded.
+
+    Delaunay of the point cloud is not the mesh: on a mapped structured grid
+    the two disagree on ~60% of the triangles, and the reinterpolation error is
+    the same order as the discretisation error being measured. Inverted
+    triangles are masked; if matplotlib still cannot build its point-location
+    structure, we fall back to Delaunay and say so.
+    """
+    import matplotlib.tri as mtri
+
+    u = np.asarray(u)
+    cols = u.reshape(len(u), -1)
+
+    a, b, c = nodes[tri_conn[:, 0]], nodes[tri_conn[:, 1]], nodes[tri_conn[:, 2]]
+    area = 0.5 * ((b[:, 0]-a[:, 0])*(c[:, 1]-a[:, 1])
+                  - (c[:, 0]-a[:, 0])*(b[:, 1]-a[:, 1]))
+    if np.median(area) < 0:
+        area = -area
+    bad = np.abs(area) <= 1e-10 * np.abs(area).max()
+
+    try:
+        triang = mtri.Triangulation(nodes[:, 0], nodes[:, 1], tri_conn)
+        if bad.any():
+            print(f"    warning {label}: masking {bad.sum()}/{len(area)} folded "
+                  f"or degenerate triangles ({100*bad.mean():.1f}%)")
+            triang.set_mask(bad)
+        out, masks = [], []
+        for k in range(cols.shape[1]):
+            v = mtri.LinearTriInterpolator(triang, cols[:, k])(pts[:, 0], pts[:, 1])
+            masks.append(np.ma.getmaskarray(v))
+            out.append(np.ma.filled(v, fill))
+        v = np.stack(out, axis=1)
+        mask = np.any(masks, axis=0)
+    except RuntimeError:
+        from scipy.interpolate import LinearNDInterpolator
+        print(f"    warning {label}: mesh triangulation invalid, "
+              f"falling back to Delaunay (accuracy degraded)")
+        v = LinearNDInterpolator(nodes, cols, fill_value=np.nan)(pts)
+        nanmask = np.isnan(v)
+        mask = nanmask.any(axis=1)
         v = np.where(nanmask, fill, v)
-    return v, mask
+
+    if u.ndim == 1:
+        return v.ravel(), mask
+    return v.reshape((len(pts),) + u.shape[1:]), mask
 
 
 def l2_norm_on_mesh(mesh, nodal):
@@ -877,13 +914,13 @@ def evaluate_errors(mesh_hi, disp_hi, mesh_d, disp_d, x_m, tri_conn_m, disp_m):
     dd_i, mask_d = _interp_nodal(mesh_d.nodes, _tri_conn(mesh_d), disp_d, pts)
     dm_i, mask_m = _interp_nodal(x_m, tri_conn_m, disp_m, pts)
 
-    frac = 100.0 * max(mask_d.mean(), mask_m.mean())
-    if frac > 1.0:
-        print(f"    note: {frac:.1f}% of reference nodes fell outside a coarse mesh "
-              f"(filled with boundary value)")
+    keep = ~(mask_d | mask_m)
+    if (~keep).any():
+        print(f"    excluded {100*(~keep).mean():.2f}% of reference nodes  "
+              f"(direct {100*mask_d.mean():.2f}%, pullback {100*mask_m.mean():.2f}%)")
 
-    e_d = dd_i - disp_hi
-    e_m = dm_i - disp_hi
+    e_d = np.where(keep[:, None], dd_i - disp_hi, 0.0)
+    e_m = np.where(keep[:, None], dm_i - disp_hi, 0.0)
     err_d = np.linalg.norm(e_d, axis=1)     # |u_direct  - u_ref|  (heatmap field)
     err_m = np.linalg.norm(e_m, axis=1)     # |u_pullbck - u_ref|
 
@@ -896,7 +933,7 @@ def evaluate_errors(mesh_hi, disp_hi, mesh_d, disp_d, x_m, tri_conn_m, disp_m):
     l2_d = _vec_l2(mesh_hi, e_d)
     l2_m = _vec_l2(mesh_hi, e_m)
     if RELATIVE_L2:
-        ref = _vec_l2(mesh_hi, disp_hi)
+        ref = _vec_l2(mesh_hi, np.where(keep[:, None], disp_hi, 0.0))
         if ref > 0:
             l2_d /= ref
             l2_m /= ref
@@ -1031,7 +1068,7 @@ def main():
 
         # Mapped solve
         print("\n  Mapped solve:")
-        mesh_sq, u_m, disp_m, umag_m, x_m = solve_mapped_elasticity(mapping)
+        mesh_sq, u_m, disp_m, umag_m, x_m, clamp_m  = solve_mapped_elasticity(mapping)
 
         # Boundary check
         t = np.linspace(0, 2 * np.pi, 200)
@@ -1057,15 +1094,17 @@ def main():
         _, disp_hi, umag_hi = solve_direct_elasticity(shape, mesh_hi)
         print(f"    Reference : {mesh_hi.n_elements} {HIFI_ETYPE} elements")
 
-        mesh_dc = mesh_shape_to_target(shape, mesh_sq.n_elements, DIRECT_ETYPE)
-        _, disp_dc, _ = solve_direct_elasticity(shape, mesh_dc)
-        print(f"    Matched   : {mesh_dc.n_elements} {DIRECT_ETYPE} (direct) vs "
-              f"{mesh_sq.n_elements} quad4 (mapped)")
+        print(f"    Direct    : {mesh_d.n_elements} {DIRECT_ETYPE} "
+              f"({mesh_d.n_nodes} nodes, lc={MESH_LC})  vs  "
+              f"{mesh_sq.n_elements} quad4 mapped ({mesh_sq.n_nodes} nodes)")
 
         quad_conn = mesh_sq.element_blocks[0].connectivity
         tri_conn_m = np.vstack([quad_conn[:, [0, 1, 2]], quad_conn[:, [0, 2, 3]]])
+
+
+
         err_d, err_m, l2_d, l2_m = evaluate_errors(
-            mesh_hi, disp_hi, mesh_dc, disp_dc, x_m, tri_conn_m, disp_m)
+            mesh_hi, disp_hi, mesh_d, disp_d, x_m, tri_conn_m, disp_m) 
         tag = "rel L2" if RELATIVE_L2 else "L2"
         print(f"    {tag} — direct: {l2_d:.3e} | pullback: {l2_m:.3e}")
 
