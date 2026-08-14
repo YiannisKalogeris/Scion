@@ -1,6 +1,6 @@
 # Simulacrum
 
-A modular computational mechanics library with Python orchestration and optional Rust/C++ acceleration. Designed for research in numerical methods for PDEs, scientific machine learning, and uncertainty quantification.
+A modular computational mechanics library with Python orchestration and optional Rust/C++/Warp acceleration. Designed for research in numerical methods for PDEs, scientific machine learning, and uncertainty quantification.
 
 ## Project Structure
 
@@ -10,18 +10,23 @@ Simulacrum/
 │   ├── core/                    #   Domain, Field, DOF, logging abstractions
 │   ├── mesh/                    #   Mesh generation (built-in + gmsh), import via meshio
 │   ├── discretization/          #   Numerical schemes
-│   │   ├── fem/                 #     Finite Element Method
+│   │   ├── fem/                 #     Finite Element Method (+ nonlinear assembly, quadrature state)
+│   │   ├── mpm/                 #     Material Point Method (APIC/PIC/FLIP, GIMP, GPIC, Warp backend)
 │   │   ├── fdm/                 #     Finite Difference Method
 │   │   ├── fvm/                 #     Finite Volume Method (scaffold)
 │   │   └── sph/                 #     Smoothed Particle Hydrodynamics (scaffold)
-│   ├── materials/               #   Constitutive models (linear elastic, thermal, hyperelastic)
-│   ├── solvers/                 #   Linear (direct, Krylov) and nonlinear (Newton-Raphson)
+│   ├── materials/               #   Constitutive models
+│   │   ├── fracture/            #     Phase-field brittle fracture (composable)
+│   │   ├── plasticity/          #     Rate-independent plasticity (composable)
+│   │   └── notation.py          #     Mandel / Voigt tensor conversions
+│   ├── multiphysics/            #   Coupled two-field problems (staggered drivers)
+│   ├── solvers/                 #   Linear, Newton-Raphson, staggered, bound-constrained
 │   ├── boundary/                #   Dirichlet / Neumann BC handling
 │   ├── geometry/                #   Shape generation, SDF rendering, harmonic maps
 │   ├── ml/                      #   Machine learning (MLP, GNN, U-Net, training, surrogates)
 │   ├── uq/                      #   Uncertainty quantification (sampling, MCMC, PCE, GP)
 │   ├── optimization/            #   Optimisation (gradient, CMA-ES, Bayesian, OED)
-│   ├── io/                      #   VTK/VTU output via meshio
+│   ├── io/                      #   VTK/VTU/VTI/PVD output via meshio
 │   ├── postprocessing/          #   PyVista-based visualisation
 │   └── _backends/               #   Native acceleration
 │       ├── rust/                #     PyO3/maturin Rust extension
@@ -29,53 +34,41 @@ Simulacrum/
 │
 ├── projects/                    # Research projects (consumers of the library)
 │   └── nsf_domain_mapping/      #   Neural Spline Flow domain-to-square mapping
-│       ├── models/              #     NSF architecture
-│       ├── config.py            #     Hyperparameters and settings
-│       ├── dataset.py           #     Data generation pipeline
-│       └── Main_nsf.py          #     Full training/evaluation pipeline
 │
-├── tests/                       # Unit tests for the library
-├── examples/                    # Short self-contained demos
-│   └── fem/                     #   e.g. poisson_2d.py
+├── tests/                       # Unit and verification tests
+├── examples/                    # Self-contained demos and benchmarks
+│   ├── fem/                     #   Poisson, elasticity, pullback FEM
+│   ├── mpm/                     #   Two-disk collision, block drop, GPIC bar
+│   ├── fracture/                #   Single-edge notched tension
+│   └── plasticity/              #   Thick-walled cylinder
 ├── benchmarks/                  # Performance benchmarks
 ├── docs/                        # Documentation source
-├── pyproject.toml               # Package configuration and dependencies
+├── pyproject.toml
 └── README.md
 ```
 
 ## Design Principles
 
 - **Python first**: All orchestration in Python. NumPy/SciPy for numerics.
-- **Swappable discretizations**: FEM, FDM, FVM, SPH share the same `Domain → LinearSystem → Solver` pipeline.
+- **Swappable discretizations**: FEM, MPM, FDM, FVM, SPH share the same `Domain → LinearSystem → Solver` pipeline.
+- **Composition over inheritance**: Fracture and plasticity models are assembled from orthogonal, independently testable axes rather than one class per published model.
+- **Constitutive models know nothing about meshes**: they operate on batched tensors at quadrature points, so a model written for FEM works unchanged in MPM or a meshfree scheme.
+- **Verify against closed forms**: every derivative is checked against finite differences, and every physics module against an analytical solution or a published benchmark.
 - **Library vs. projects**: Reusable components live in `src/simulacrum/`; research workflows live in `projects/`.
-- **Compiled backends optional**: Rust (via maturin/PyO3) and C++ (via pybind11/Eigen) for hot loops. The library works without them.
-- **Meshing is external**: Use gmsh or meshio for mesh generation and import.
-- **VTK output**: Write `.vtu` files and visualise in ParaView or interactively with PyVista.
+- **Compiled backends optional**: Rust, C++ and NVIDIA Warp for hot loops. The library works without them.
+- **VTK output**: Write `.vtu` / `.vti` / `.pvd` and visualise in ParaView or interactively with PyVista.
 
 ## Quick Start
 
 ```bash
-# Install core library in development mode
-pip install -e ".[dev]"
+pip install -e ".[dev]"          # core library
+pip install -e ".[all]"          # everything
 
-# Install with JAX support (for NSF project)
-pip install -e ".[jax,dev]"
+pytest tests/                    # run the test suite
 
-# Install with PyTorch support (for ML subpackage)
-pip install -e ".[ml,dev]"
-
-# Install everything
-pip install -e ".[all]"
-
-# Run tests
-pytest tests/
-
-# Run an example
 python examples/fem/poisson_2d.py
-
-# Run the NSF domain mapping project
-cd projects/nsf_domain_mapping
-python Main_nsf.py
+python -m examples.mpm.two_disks
+python -m examples.plasticity.thick_cylinder
 ```
 
 ## Subpackage Overview
@@ -86,12 +79,80 @@ python Main_nsf.py
 |---|---|
 | `core` | Domain, Field, DOF management, logging |
 | `mesh` | Mesh generation and import (structured, unstructured, gmsh) |
-| `discretization` | FEM, FDM, FVM, SPH assemblers |
-| `materials` | Linear elastic, thermal, hyperelastic constitutive models |
-| `solvers` | Direct (SciPy), Krylov (CG, GMRES), Newton-Raphson |
+| `discretization.fem` | Linear and nonlinear assembly, persistent quadrature-point state |
+| `discretization.mpm` | Material Point Method with NumPy and Warp backends |
+| `materials` | Elastic, thermal, hyperelastic, phase-field fracture, plasticity |
+| `multiphysics` | Coupled two-field problems with staggered solution |
+| `solvers` | Direct, Krylov, Newton-Raphson, staggered, bound-constrained |
 | `boundary` | Dirichlet and Neumann boundary condition application |
-| `io` | VTK/VTU file output via meshio |
+| `io` | VTK/VTU/VTI/PVD output via meshio |
 | `postprocessing` | Interactive 3D visualisation with PyVista |
+
+### Material Point Method
+
+| Module | Purpose |
+|---|---|
+| `mpm.basis` | Linear hat, quadratic/cubic B-spline, uGIMP with particle domains |
+| `mpm.transfer` | PIC, FLIP and APIC particle–grid transfers |
+| `mpm.stepper` | Explicit four-stage solver (stencil → P2G → grid → G2P) |
+| `mpm.gpic` | Generalised Particle-in-Cell: total-Lagrangian FE bodies on an Eulerian grid |
+| `mpm.warp` | NVIDIA Warp kernels; same physics on CPU or CUDA, ~30× over NumPy |
+
+Particles are stored struct-of-arrays and the algorithms are written in "kernel shape" — explicit stencils, scatter/gather, closed-form small-matrix algebra — so the NumPy reference and the Warp kernels stay line-for-line comparable. A cross-check test pins the two backends together.
+
+### Phase-Field Fracture
+
+A model is composed from four orthogonal choices, each with its own registry:
+
+```python
+model = PhaseFieldModel(E, nu, Gc, ell,
+                        split="spectral",        # none | amor | spectral
+                        degradation="quadratic", # quadratic | cubic | rational
+                        dissipation="AT2",       # AT1 | AT2
+                        coupling="hybrid")       # isotropic | anisotropic | hybrid
+```
+
+| Axis | Module | Options |
+|---|---|---|
+| Energy split | `fracture.splits` | No split, volumetric/deviatoric (Amor), spectral (Miehe) |
+| Degradation | `fracture.degradation` | Quadratic, cubic (Borden), rational (Lorentz/Wu) |
+| Dissipation | `fracture.dissipation` | AT1 (elastic threshold, compact support), AT2 |
+| Coupling | `fracture.coupling` | Isotropic, anisotropic, hybrid |
+
+Adding a variant means one class and one registry entry. AT1 requires a bound-constrained phase-field solve, which the model declares through `needs_bound_constraint` so the driver dispatches automatically.
+
+### Plasticity
+
+Three orthogonal axes plus a general closest-point return map:
+
+```python
+model = PlasticityModel(E, nu,
+                        criterion="j2",                      # or drucker-prager
+                        isotropic=Voce(250.0, 400.0, 20.0),
+                        flow=NonAssociative.drucker_prager(psi=10.0),
+                        kinematic=LinearKinematic(2000.0))
+```
+
+| Axis | Module | Options |
+|---|---|---|
+| Yield criterion | `plasticity.yield_criteria` | von Mises (J2), Drucker–Prager (with Mohr–Coulomb calibrations) |
+| Hardening | `plasticity.hardening` | Perfect, linear, Voce, Swift, Ludwik; Prager and Armstrong–Frederick kinematic |
+| Flow rule | `plasticity.flow_rules` | Associative, non-associative (independent dilatancy angle) |
+
+The return map solves for the *relative* stress, which eliminates the back stress and keeps kinematic hardening tractable. The **consistent tangent is obtained by reusing the converged Jacobian** rather than deriving a closed form per model, so it is exact for any combination of the three axes and for the algorithm as implemented — which is what gives quadratic Newton convergence.
+
+Everything works on full 3-D tensors regardless of element dimension: in plane strain `σ₃₃` is nonzero and enters `J₂`, so reducing to in-plane components would give the wrong yield surface.
+
+### Verification tools
+
+| Module | Purpose |
+|---|---|
+| `solvers.tangent_check` | Finite-difference verification of any tangent operator |
+| `solvers.staggered` | Alternating driver with a normalised-slope stopping criterion |
+| `solvers.bound_constrained` | Primal-dual active set for `d ≥ 0` and irreversibility constraints |
+| `fem.quadrature_state` | Persistent Gauss-point state with trial/committed semantics |
+
+`check_tangent` takes callables, so the same test applies to plasticity, hyperelasticity and phase-field, at the material point or at the structural level. A wrong tangent still converges — linearly instead of quadratically — so nothing but an explicit check distinguishes the two.
 
 ### Geometry
 
@@ -127,41 +188,70 @@ python Main_nsf.py
 | `optimization.bayesian_opt` | Bayesian optimisation with GP surrogates |
 | `optimization.oed` | Optimal Experimental Design (A/D/E-optimality) |
 
+## Verification
+
+Physics modules are validated against closed-form solutions or published benchmarks, not only against themselves.
+
+| Benchmark | Reference | Result |
+|---|---|---|
+| Thick-walled cylinder, perfect plasticity | `p_lim = 2Y ln(b/a)/√3` | 0.09% on the limit pressure; plastic front tracks the analytical `p(c)` within 4% |
+| Single-edge notched tension | Ambati, Gerasimov & De Lorenzis (2015) | Peak load 0.645 kN vs 0.70; peak displacement matches |
+| Two-disk collision (MPM) | Sulsky et al. | Momentum conserved to 1e-14 |
+| GPIC bar in gravity | Nguyen et al. (2020) | 1.6% on the tip deflection against the analytical rod |
+| 1-D crack profiles | `exp(-\|x\|/ℓ)` (AT2), `(1-\|x\|/2ℓ)²` (AT1) | First-order convergence; surface energy recovers `Gc × length` |
+
 ## Optional Dependencies
 
 ```toml
 [project.optional-dependencies]
 ml   = ["torch>=2.0"]
 jax  = ["jax>=0.4", "jaxlib>=0.4", "equinox>=0.11", "optax>=0.2", "diffrax>=0.5"]
+warp = ["warp-lang>=1.0"]
 meshing = ["gmsh>=4.11"]
+viz  = ["pyvista", "meshio"]
 dev  = ["pytest>=7.0", "pytest-benchmark", "ruff", "mypy"]
-all  = ["simulacrum[ml,jax,meshing,dev,docs]"]
+all  = ["simulacrum[ml,jax,warp,meshing,viz,dev,docs]"]
 ```
 
-## Building the Rust Backend
+## Building the Accelerated Backends
 
 ```bash
-cd src/simulacrum/_backends/rust
-maturin develop --release
+# Rust
+cd src/simulacrum/_backends/rust && maturin develop --release
+
+# C++
+cd src/simulacrum/_backends/cpp && mkdir build && cd build && cmake .. && make
+
+# Warp needs no build step; GPU execution requires a CUDA device
+pip install warp-lang
 ```
 
-## Building the C++ Backend
+## Known Limitations
 
-```bash
-cd src/simulacrum/_backends/cpp
-mkdir build && cd build
-cmake .. && make
-```
+Stated explicitly rather than discovered at runtime — each of these raises with a clear message rather than silently approximating:
+
+- **Plane stress plasticity** requires solving for `ε₃₃` inside the return map; only plane strain and 3-D are supported.
+- **Mohr–Coulomb and Tresca** have surfaces with corners and need a multi-surface return map.
+- **Armstrong–Frederick kinematic hardening** cannot be eliminated into the relative-stress form used by the return map.
+- **Drucker–Prager with zero dilatancy** has no admissible return for trial states beyond the cone apex; a tension cutoff is needed.
+- **GPIC contact** is no-slip only, and the background grid must resolve the FE mesh.
+- Phase-field fracture uses **displacement control**, which cannot follow a true snap-back.
 
 ## Roadmap
 
+- [x] Material Point Method (explicit APIC, GIMP, GPIC) with GPU backend
+- [x] Phase-field brittle fracture (AT1/AT2, three energy splits, three couplings)
+- [x] J2 and Drucker–Prager plasticity with consistent tangents
+- [x] Nonlinear material models (Neo-Hookean, hyperelastic)
+- [ ] Plane-stress return mapping
+- [ ] Multi-surface return map (Mohr–Coulomb, Tresca, tension cutoff)
+- [ ] Arc-length control for snap-back
+- [ ] Implicit MPM
 - [ ] FVM assembler (Godunov, Roe flux schemes)
 - [ ] SPH assembler with neighbour search
 - [ ] Transient solvers (implicit/explicit time integration)
 - [ ] Parallel assembly with MPI (mpi4py)
-- [ ] GPU acceleration (CuPy / JAX backend)
 - [ ] Higher-order elements (Tri6, Quad9, Tet10, Hex27)
-- [ ] Nonlinear material models (J2 plasticity, Neo-Hookean)
 - [ ] Neural operator architectures (DeepONet, FNO)
 - [ ] Diffusion models for Bayesian inference
 
