@@ -222,7 +222,10 @@ def test_registries_resolve_and_reject():
     assert isinstance(get_kinematic("prager", C=1.0), LinearKinematic)
     assert isinstance(get_kinematic("af", C=1.0, gamma=1.0), ArmstrongFrederick)
     with pytest.raises(NotImplementedError):
-        get_isotropic("johnson-cook")
+        # Zerilli-Armstrong: a real rate- and temperature-dependent law that
+        # is genuinely not implemented. Johnson-Cook used to be the example
+        # here and now resolves, which is what adding it was for.
+        get_isotropic("zerilli-armstrong")
     with pytest.raises(NotImplementedError):
         get_kinematic("chaboche")
 

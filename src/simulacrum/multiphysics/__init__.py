@@ -11,6 +11,7 @@ so ``StaggeredSolver`` serves every physics here. What lives in this package is
 only the wiring the other two cannot see.
 """
 
+from .gradient_damage import GradientDamageProblem
 from .phase_field_fracture import PhaseFieldFractureProblem
 from .two_field import Field, StepResult, TwoFieldProblem
 
@@ -19,4 +20,5 @@ __all__ = [
     "StepResult",
     "TwoFieldProblem",
     "PhaseFieldFractureProblem",
+    "GradientDamageProblem",
 ]

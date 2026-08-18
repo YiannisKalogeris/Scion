@@ -59,6 +59,7 @@ from .hardening import (
     KinematicHardening,
     LinearIsotropic,
     LinearKinematic,
+    JohnsonCook,
     Ludwik,
     NoKinematic,
     PerfectPlasticity,
@@ -98,6 +99,7 @@ __all__ = [
     "Voce",
     "Swift",
     "Ludwik",
+    "JohnsonCook",
     "get_isotropic",
     "ISOTROPIC_REGISTRY",
     # hardening -- kinematic

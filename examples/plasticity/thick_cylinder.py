@@ -65,6 +65,7 @@ from pathlib import Path
 import numpy as np
 
 from simulacrum.core.domain import Domain
+from simulacrum.core.logging import quiet
 from simulacrum.discretization.fem.nonlinear_assembler import (
     ElastoplasticAssembler,
     StatefulOperators,
@@ -212,9 +213,10 @@ def plastic_front(asm, ops, u, info) -> float:
 
 def run(n_r=N_R, n_theta=N_THETA, n_steps=N_STEPS, quad_order=None,
         verbose=True):
-    import logging
-    logging.disable(logging.CRITICAL)
-
+    # `quiet` rather than logging.disable: this function is imported and called
+    # by tests/examples/test_thick_cylinder.py, and logging.disable is
+    # process-global and permanent, so it used to silence every logger in the
+    # interpreter for the rest of the pytest session
     asm, ops, model, info = build(n_r, n_theta, quad_order)
     driver = DisplacementControl(
         ops.internal_force, ops.tangent, asm.n_dof, info["free"],
@@ -229,7 +231,8 @@ def run(n_r=N_R, n_theta=N_THETA, n_steps=N_STEPS, quad_order=None,
                         plastic_front(asm, ops, u, info)))
 
     driver.on_step_converged = lambda u: (ops.commit(u), record(u))
-    result = driver.solve()
+    with quiet():
+        result = driver.solve()
 
     if verbose:
         print(f"  mesh {n_r} x {n_theta} = {asm.n_elements} quad4, "

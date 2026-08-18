@@ -12,6 +12,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+# not np.trapezoid / np.trapz: NumPy renamed one to the other in 2.0 and
+# removed the old name, so either spelling pins the library to one major
+# version. SciPy is already a hard dependency and carries both.
+from scipy.integrate import trapezoid
 
 from simulacrum.discretization.fem.quadrature_state import QuadratureState
 from simulacrum.materials.fracture import (
@@ -217,7 +221,7 @@ def test_c_alpha_matches_its_definition(name, expected):
     and every crack propagates at the wrong load."""
     diss = get_dissipation(name)
     s = np.linspace(0.0, 1.0, 200001)
-    integral = np.trapezoid(np.sqrt(diss.alpha(s)), s)
+    integral = trapezoid(np.sqrt(diss.alpha(s)), s)
     assert abs(4.0 * integral - expected) < 1e-5
     assert abs(diss.c_alpha - expected) < 1e-12
 

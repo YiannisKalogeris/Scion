@@ -20,3 +20,13 @@ __all__ = [
     "NeoHookean",
     "StVenantKirchhoff",
 ]
+
+from simulacrum.materials.eos import (
+    EOS_REGISTRY, EquationOfState, LinearEOS, MieGruneisen, get_eos,
+)
+from simulacrum.materials.high_rate import HighRateState, JohnsonCookModel
+
+__all__ = list(globals().get("__all__", [])) + [
+    "EquationOfState", "LinearEOS", "MieGruneisen", "EOS_REGISTRY", "get_eos",
+    "HighRateState", "JohnsonCookModel",
+]

@@ -48,6 +48,7 @@ __all__ = [
     "to_mandel4",
     "from_mandel4",
     "voigt_strain_to_mandel",
+    "voigt_strain_to_tensor",
     "mandel_to_voigt_stress",
     "mandel_to_voigt_tangent",
     "identity_mandel",
@@ -134,6 +135,56 @@ def voigt_strain_to_mandel(eps: np.ndarray, dim: int = 3) -> np.ndarray:
         out[:, 5] = eps[:, 2] / SQ2
     else:
         raise ValueError(f"dim must be 2 or 3, got {dim}")
+    return out
+
+
+def voigt_strain_to_tensor(eps: np.ndarray, dim: int = 3,
+                           eps_33=None) -> np.ndarray:
+    """Voigt engineering strain to full tensors, ``(..., 3, 3)``.
+
+    Accepts any leading shape, so a ``(n_points, n_steps, n_voigt)`` history
+    converts in one call.
+
+    Two things this exists to get right, both of which have their own way of
+    being silently wrong:
+
+    **The engineering shear.** The Voigt strain vector stores ``gamma = 2 eps``,
+    so every off-diagonal tensor component is half the stored value. Filling the
+    tensor straight from the vector doubles all three shears, which doubles the
+    deviator's shear contribution and every invariant built on it.
+
+    **The out-of-plane slot.** In 2-D this is plane strain, so ``eps_33 = 0``
+    exactly -- by definition of the constraint, needing no extra information.
+    That is the opposite of the *stress* side, where ``sigma_33`` is unknown and
+    must be supplied. ``eps_33`` is accepted anyway for generalised plane
+    strain, where the out-of-plane strain is a prescribed nonzero constant.
+    """
+    e = np.asarray(eps, dtype=float)
+    lead = e.shape[:-1]
+    out = np.zeros(lead + (3, 3))
+
+    if dim == 3:
+        if e.shape[-1] != 6:
+            raise ValueError(f"3-D Voigt strain needs 6 components, got "
+                             f"{e.shape[-1]}")
+        out[..., 0, 0] = e[..., 0]
+        out[..., 1, 1] = e[..., 1]
+        out[..., 2, 2] = e[..., 2]
+        out[..., 1, 2] = out[..., 2, 1] = 0.5 * e[..., 3]
+        out[..., 0, 2] = out[..., 2, 0] = 0.5 * e[..., 4]
+        out[..., 0, 1] = out[..., 1, 0] = 0.5 * e[..., 5]
+    elif dim == 2:
+        if e.shape[-1] != 3:
+            raise ValueError(f"2-D Voigt strain needs 3 components "
+                             f"[e11, e22, gamma12], got {e.shape[-1]}")
+        out[..., 0, 0] = e[..., 0]
+        out[..., 1, 1] = e[..., 1]
+        out[..., 0, 1] = out[..., 1, 0] = 0.5 * e[..., 2]
+    else:
+        raise ValueError(f"dim must be 2 or 3, got {dim}")
+
+    if eps_33 is not None:
+        out[..., 2, 2] = np.broadcast_to(np.asarray(eps_33, dtype=float), lead)
     return out
 
 

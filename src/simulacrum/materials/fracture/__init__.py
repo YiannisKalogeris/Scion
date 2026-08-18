@@ -13,6 +13,11 @@ A model is a composition of four orthogonal choices, each with its own registry:
 
 Adding a variant means adding a class to one module and one registry entry;
 nothing else changes.
+
+The split axis lives one level up, in :mod:`simulacrum.materials.splits`: it is
+a decomposition of linear elastic energy with no fracture content, and continuum
+damage needs the same one. It is re-exported here, so the names below are
+unchanged.
 """
 
 from .coupling import (
@@ -25,7 +30,7 @@ from .coupling import (
 from .degradation import Cubic, Degradation, Quadratic, Rational, get_degradation
 from .dissipation import AT1, AT2, Dissipation, get_dissipation
 from .model import PhaseFieldModel
-from .splits import (
+from ..splits import (
     NoSplit,
     Spectral,
     Split,

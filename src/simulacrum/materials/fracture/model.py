@@ -42,7 +42,7 @@ import numpy as np
 from .coupling import Coupling, Hybrid, get_coupling
 from .degradation import Degradation, get_degradation
 from .dissipation import Dissipation, get_dissipation
-from .splits import Split, get_split, voigt_stress, voigt_tangent
+from ..splits import Split, get_split, voigt_stress, voigt_tangent
 
 __all__ = ["PhaseFieldModel"]
 

@@ -9,6 +9,16 @@ Deliberately avoids ``np.linalg``:
   Warp port of any caller is mechanical rather than a rewrite.
 
 All functions take arrays shaped ``(n, d, d)``.
+
+Singular matrices are not checked
+---------------------------------
+:func:`inv` divides by the determinant and does nothing else. A singular input
+gives ``±inf`` or ``nan`` with a numpy warning, and that is deliberate: the
+callers are per-particle loops running at 1e5 matrices a step, and a check
+there would cost more than the inversion. The physical guard belongs upstream --
+a deformation gradient with ``J <= 0`` means the material has inverted, which is
+a modelling failure the constitutive model should catch and report, not
+something to paper over with a pseudo-inverse.
 """
 
 from __future__ import annotations

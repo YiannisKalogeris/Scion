@@ -13,15 +13,61 @@ assembles a matrix, so there is no ``LinearSystem`` to return. An implicit
 stepper would assemble one and could then reuse ``solvers/nonlinear.py``
 directly -- which is the reason the material interface here is PK1-plus-tangent-
 compatible rather than something MPM-specific.
+
+Two material interfaces
+-----------------------
+``pk1(F) -> (P, J)``
+    Hyperelastic. Stress is a function of the current deformation gradient and
+    nothing else, so it can be evaluated at any point in the step.
+
+``update(F, L, dt, state) -> (sigma, new_state)``
+    Path-dependent: plasticity, damage, anything carrying history. Selected by
+    passing ``state=`` to the constructor.
+
+The second changes *when* the stress is computed. A history-carrying material
+needs the velocity gradient over the step, which only exists after the grid
+solve, so the constitutive update runs at the **end** of the step and the
+internal force at the start uses the stress left by the previous one. That is
+Update Stress Last, and it is what the MUSL schemes in the impact literature do.
+The hyperelastic path is unchanged and still evaluates stress in place.
+
+Plane strain is embedded, not reduced
+-------------------------------------
+A 2-D run carries ``(n, 2, 2)`` kinematics, and constitutive code in this
+library is always full 3-D -- ``sigma_33`` is nonzero in plane strain and enters
+``J2``, so a model handed 2-D tensors computes the wrong yield surface. The
+stepper therefore promotes ``F`` and ``L`` into the 3-D corner of an identity,
+calls the material, and takes the in-plane block of the stress back. The
+out-of-plane component is not discarded -- it lives in the material's state,
+where the yield calculation needs it -- it simply exerts no in-plane force.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
+from simulacrum.core import small_linalg as sla
+
 from .background_grid import CartesianGrid
 from .particles import ParticleSet
 from .transfer import Transfer
+
+
+def _promote(tensor: np.ndarray, fill_diagonal: bool) -> np.ndarray:
+    """Embed ``(n, d, d)`` in ``(n, 3, 3)``. ``d = 3`` passes straight through.
+
+    ``fill_diagonal`` distinguishes a deformation gradient, whose out-of-plane
+    entry is 1 in plane strain, from a velocity gradient, whose is 0.
+    """
+    tensor = np.asarray(tensor, dtype=float)
+    d = tensor.shape[-1]
+    if d == 3:
+        return tensor
+    out = np.zeros((tensor.shape[0], 3, 3))
+    out[:, :d, :d] = tensor
+    if fill_diagonal:
+        out[:, 2, 2] = 1.0
+    return out
 
 
 class ExplicitMPMStepper:
@@ -30,9 +76,13 @@ class ExplicitMPMStepper:
     Parameters
     ----------
     grid        : CartesianGrid
-    material    : object with ``pk1(F) -> (P, J)``
+    material    : either ``pk1(F) -> (P, J)`` (hyperelastic) or
+                  ``update(F, L, dt, state) -> (sigma, state)`` (path-dependent,
+                  selected by passing ``state``)
     transfer    : Transfer (APIC by default)
     dt          : time step
+    state       : initial history for a path-dependent material. Its presence
+                  is what switches the stepper to the Update-Stress-Last path.
     body_force  : (dim,) acceleration, e.g. gravity
     boundaries  : sequence of GridBC applied after the grid velocity update
     domain_update : how the particle domain evolves, for domain bases such as
@@ -42,7 +92,7 @@ class ExplicitMPMStepper:
 
     def __init__(self, grid: CartesianGrid, material, transfer: Transfer,
                  dt: float, body_force=None, boundaries=(),
-                 domain_update: str = "none"):
+                 domain_update: str = "none", state=None):
         self.grid = grid
         self.material = material
         self.transfer = transfer
@@ -51,6 +101,16 @@ class ExplicitMPMStepper:
                            else np.asarray(body_force, dtype=grid.dtype))
         self.boundaries = list(boundaries)
         self.domain_update = domain_update
+
+        self.state = state
+        if state is not None and not hasattr(material, "update"):
+            raise TypeError(
+                "a state was given but the material has no update(F, L, dt, "
+                "state); a hyperelastic pk1 material carries no history and "
+                "needs no state")
+        #: Cauchy stress left by the previous step, ``(n, 3, 3)``. None until
+        #: the first evaluation.
+        self.stress = None
 
     # ------------------------------------------------------------------
     def cfl_dt(self, particles: ParticleSet, density: float,
@@ -67,11 +127,34 @@ class ExplicitMPMStepper:
         Evaluated as ``-sum_p V_p^0 P_p F_p^T grad_w_ip``, which is identical
         (V_p sigma_p = J V_p^0 * (1/J) P F^T) but avoids dividing by J.
         """
-        P, J = self.material.pk1(particles.F)
-        VsigmaT = particles.vol0[:, None, None] * np.einsum(
-            "pij,pkj->pik", P, particles.F
-        )
-        return -np.einsum("pij,pkj->pki", VsigmaT, st.grad_w)   # (n, K, dim)
+        if self.state is None:
+            P, J = self.material.pk1(particles.F)
+            VsigmaT = particles.vol0[:, None, None] * np.einsum(
+                "pij,pkj->pik", P, particles.F
+            )
+            return -np.einsum("pij,pkj->pki", VsigmaT, st.grad_w)
+
+        # path-dependent: use the stress the previous step left behind. On the
+        # very first call there is none, so evaluate the material at zero rate
+        # -- which reads out the initial state rather than assuming it is
+        # unstressed.
+        if self.stress is None:
+            self._constitutive_update(particles, np.zeros_like(particles.F),
+                                      0.0)
+        dim = particles.dim
+        J = sla.det(particles.F)
+        Vsigma = ((particles.vol0 * J)[:, None, None]
+                  * self.stress[:, :dim, :dim])
+        return -np.einsum("pij,pkj->pki", Vsigma, st.grad_w)
+
+    # ------------------------------------------------------------------
+    def _constitutive_update(self, particles: ParticleSet, L: np.ndarray,
+                             dt: float) -> None:
+        """Advance the path-dependent material and store the new stress."""
+        sigma, self.state = self.material.update(
+            _promote(particles.F, fill_diagonal=True),
+            _promote(L, fill_diagonal=False), dt, self.state)
+        self.stress = sigma
 
     # ------------------------------------------------------------------
     def step(self, particles: ParticleSet) -> None:
@@ -98,6 +181,14 @@ class ExplicitMPMStepper:
 
         # 3. G2P (also updates F and x)
         self.transfer.g2p(particles, grid, st, grid_v, dt)
+
+        #    3b. path-dependent constitutive update, on the new F and the
+        #        velocity gradient the grid solve just produced. Recomputed
+        #        here rather than returned by g2p so the transfer classes stay
+        #        untouched; it is one einsum over the same stencil.
+        if self.state is not None:
+            L = np.einsum("pka,pkb->pab", grid_v[st.node_id], st.grad_w)
+            self._constitutive_update(particles, L, dt)
 
         #    domain follows the new F, so it must come after G2P
         if grid.basis.requires_domain and self.domain_update != "none":

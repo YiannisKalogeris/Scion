@@ -1,18 +1,24 @@
 r"""
-Strain-energy splits for phase-field fracture.
+Strain-energy splits.
 
-Axis 1 of the four orthogonal choices that define a phase-field model. A split
-decomposes the elastic energy density
+A split decomposes the elastic energy density
 
     Psi_0(eps) = 1/2 lam tr(eps)^2 + mu tr(eps^2)
 
-into a part that may drive damage and a part that may not,
+into a part that may drive degradation and a part that may not,
 
     Psi_0 = Psi_plus + Psi_minus,
 
-so that cracks form in tension but not in compression, and crack faces do not
-interpenetrate on closure. Without a split (``NoSplit``) the model cracks under
-compression -- the two symmetric branches of the classic shear benchmark.
+so that a material loses stiffness in tension but not in compression, and the
+faces of a crack or a damage band do not interpenetrate on closure. Without a
+split (``NoSplit``) the model degrades under compression -- visible as the two
+symmetric branches of the classic shear benchmark.
+
+This lives in ``materials`` rather than in either consumer because it is a
+statement about linear elasticity, not about a failure theory. Phase-field
+fracture uses it as its axis 1 and continuum damage as its coupling axis; both
+need exactly the same decomposition, and the spectral case is delicate enough
+that a second implementation would be a second set of bugs.
 
 Everything here is batched over quadrature points: strains arrive as
 ``(n, d, d)`` and stresses/tangents leave as ``(n, d, d)`` / ``(n, d, d, d, d)``.
@@ -30,6 +36,10 @@ Conventions
 Adding a split means implementing :meth:`Split.energies` and
 :meth:`Split.stress_tangent` and registering the class. Directional,
 star-convex and no-tension splits all fit this interface unchanged.
+
+Both :mod:`simulacrum.materials.fracture` and :mod:`simulacrum.materials.damage`
+re-export the names, so ``from simulacrum.materials.fracture import get_split``
+keeps working.
 """
 
 from __future__ import annotations

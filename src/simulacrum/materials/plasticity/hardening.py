@@ -40,6 +40,7 @@ __all__ = [
     "Voce",
     "Swift",
     "Ludwik",
+    "JohnsonCook",
     "KinematicHardening",
     "NoKinematic",
     "LinearKinematic",
@@ -244,6 +245,162 @@ class Ludwik(IsotropicHardening):
         return self.K * self.n * a ** (self.n - 1.0)
 
 
+class JohnsonCook(IsotropicHardening):
+    r"""Johnson-Cook flow stress: rate- and temperature-dependent.
+
+        kappa = [A + B alpha^n] [1 + C ln(edot*)] [1 - T*^m]
+
+    with ``edot* = max(edot / edot_0, 1)`` and the homologous temperature
+    ``T* = (T - T_ref) / (T_melt - T_ref)``. The standard model for impact and
+    high-rate forming, and the first entry on this axis that is not both
+    rate-independent and isothermal.
+
+    How the rate and temperature get in
+    -----------------------------------
+    They are **frozen state**, supplied by :meth:`at` before the return map
+    runs, not unknowns solved for alongside ``alpha``:
+
+        flow = JohnsonCook(A, B, n, C, m, edot_0, T_ref, T_melt)
+        result = return_map(eps, state, criterion, flow.at(rate=d_eq, temperature=T), C_el)
+
+    That is deliberate and it is what the source algorithm does: the rate comes
+    from the *total* deviatoric strain rate ``sqrt(2/3 d:d)`` measured from the
+    velocity gradient at the start of the step, not from the plastic multiplier
+    being solved for. Freezing it makes the return map a standard scalar
+    problem in ``alpha`` alone, and the error is one step's worth of rate
+    change -- negligible in explicit dynamics, where the step is set by the CFL
+    condition anyway.
+
+    **It would be wrong in an implicit quasi-static solve**, where the step is
+    large and the plastic strain rate is genuinely part of the unknown. Use a
+    proper viscoplastic integration there; this class does not pretend to be
+    one.
+
+    Binding returns a copy rather than mutating, so one material can serve two
+    particle batches at different rates without them corrupting each other.
+
+    It is a rate-dependent *yield surface*, not viscoplasticity
+    -----------------------------------------------------------
+    The distinction has teeth. The surface moves with the *current* rate, with
+    no relaxation time, so if the strain rate drops the surface shrinks
+    immediately and any stress outside it is returned onto it. Measured: copper
+    sheared at 1e5 /s sits at 217.2 MPa; hold it still and the stress falls to
+    170.6 MPa within one step -- exactly the quasi-static flow stress at that
+    plastic strain -- and the plastic strain ticks up as it re-yields.
+
+    A real metal relaxes over a finite time and does not do that. For monotonic
+    impact loading, which is what the model is for, it makes no difference. For
+    a problem with hold periods or load reversals it is wrong, and a genuine
+    viscoplastic law with a relaxation time is what that needs.
+
+    The singularity, as in :class:`Ludwik`
+    --------------------------------------
+    For the usual ``n < 1`` the modulus ``H = B n alpha^(n-1)`` diverges at
+    ``alpha = 0``, which is the state every point is in at first yield. It is
+    floored at ``alpha_floor`` for the same reason and with the same caveat: if
+    the floor is visible in your results, the model is being asked a question it
+    cannot answer.
+    """
+
+    name = "johnson-cook"
+    linear = False
+
+    #: Distinguishes this from every other entry on the axis, so a caller can
+    #: tell whether ``at()`` needs to be called at all.
+    rate_dependent = True
+
+    def __init__(self, A: float, B: float, n: float, C: float = 0.0,
+                 m: float = 1.0, eps_dot_0: float = 1.0,
+                 T_reference: float = 293.0, T_melt: float | None = None,
+                 alpha_floor: float = 1.0e-8):
+        self.A = float(A)
+        self.B = float(B)
+        self.n = float(n)
+        self.C = float(C)
+        self.m = float(m)
+        self.eps_dot_0 = float(eps_dot_0)
+        if self.eps_dot_0 <= 0.0:
+            raise ValueError("the reference strain rate must be positive")
+        self.T_reference = float(T_reference)
+        self.T_melt = None if T_melt is None else float(T_melt)
+        if self.T_melt is not None and self.T_melt <= self.T_reference:
+            raise ValueError(
+                f"T_melt ({self.T_melt}) must exceed T_reference "
+                f"({self.T_reference}); the homologous temperature divides by "
+                f"their difference")
+        self.alpha_floor = float(alpha_floor)
+        self._rate = None
+        self._temperature = None
+
+    # ------------------------------------------------------------------
+    def at(self, rate=None, temperature=None) -> "JohnsonCook":
+        """A copy with the strain rate and temperature frozen for one step.
+
+        A copy rather than a mutation: the same material object is routinely
+        shared between particle batches, and binding in place would let one
+        batch's rate leak into another's stress update with no symptom beyond a
+        slightly wrong answer.
+        """
+        import copy as _copy
+
+        clone = _copy.copy(self)
+        clone._rate = (None if rate is None
+                       else np.asarray(rate, dtype=float))
+        clone._temperature = (None if temperature is None
+                              else np.asarray(temperature, dtype=float))
+        if clone._temperature is not None and self.T_melt is None:
+            raise ValueError(
+                "a temperature was supplied but T_melt was not, so the "
+                "homologous temperature is undefined and thermal softening "
+                "cannot be evaluated")
+        return clone
+
+    # ------------------------------------------------------------------
+    def rate_factor(self, alpha_shape=()) -> np.ndarray:
+        r"""``1 + C ln(max(edot/edot_0, 1))``.
+
+        The ``max`` matters: below the reference rate the logarithm is negative
+        and the factor would *soften* the material, which the model does not
+        mean. Clamping at one is what the original formulation and every
+        implementation of it do.
+        """
+        if self._rate is None or self.C == 0.0:
+            return np.ones(alpha_shape) if alpha_shape else np.array(1.0)
+        normalised = np.maximum(self._rate / self.eps_dot_0, 1.0)
+        return 1.0 + self.C * np.log(normalised)
+
+    def thermal_factor(self, alpha_shape=()) -> np.ndarray:
+        r"""``1 - T*^m``, clamped to ``[0, 1]``.
+
+        Reaches zero at the melting point, where the material carries no
+        deviatoric stress at all. Clamped below because a temperature above
+        ``T_melt`` would otherwise give a *negative* flow stress rather than
+        zero, and the return map would happily use it.
+        """
+        if self._temperature is None or self.T_melt is None:
+            return np.ones(alpha_shape) if alpha_shape else np.array(1.0)
+        homologous = ((self._temperature - self.T_reference)
+                      / (self.T_melt - self.T_reference))
+        homologous = np.clip(homologous, 0.0, 1.0)
+        return np.clip(1.0 - homologous ** self.m, 0.0, 1.0)
+
+    # ------------------------------------------------------------------
+    def kappa(self, alpha):
+        a = np.maximum(np.asarray(alpha, dtype=float), 0.0)
+        strain_term = self.A + self.B * a ** self.n
+        return strain_term * self.rate_factor(a.shape) \
+            * self.thermal_factor(a.shape)
+
+    def dkappa_dalpha(self, alpha):
+        a = np.maximum(np.asarray(alpha, dtype=float), self.alpha_floor)
+        slope = self.B * self.n * a ** (self.n - 1.0)
+        return slope * self.rate_factor(a.shape) * self.thermal_factor(a.shape)
+
+    def __repr__(self) -> str:
+        return (f"JohnsonCook(A={self.A:g}, B={self.B:g}, n={self.n:g}, "
+                f"C={self.C:g}, m={self.m:g})")
+
+
 # ===========================================================================
 # Kinematic
 # ===========================================================================
@@ -379,6 +536,8 @@ ISOTROPIC_REGISTRY: dict[str, type[IsotropicHardening]] = {
     "voce": Voce,
     "swift": Swift,
     "ludwik": Ludwik,
+    "johnson-cook": JohnsonCook,
+    "jc": JohnsonCook,
 }
 
 KINEMATIC_REGISTRY: dict[str, type[KinematicHardening]] = {

@@ -12,3 +12,6 @@ target/
 .DS_Store
 .idea/
 .vscode/
+
+# staging area for code being merged into src/
+_incoming/
