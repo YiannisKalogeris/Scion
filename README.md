@@ -1,12 +1,14 @@
-# Simulacrum
+# Scion
+
+**S**cientific **C**omputing **I**nfrastructure for **O**perator **N**umerics.
 
 A modular computational mechanics library with Python orchestration and optional Rust/C++/Warp acceleration. Designed for research in numerical methods for PDEs, scientific machine learning, and uncertainty quantification.
 
 ## Project Structure
 
 ```
-Simulacrum/
-├── src/simulacrum/              # The library (reusable across projects)
+Scion/
+├── src/scion/              # The library (reusable across projects)
 │   ├── core/                    #   Domain, Field, DOF, logging abstractions
 │   ├── mesh/                    #   Mesh generation (built-in + gmsh), import via meshio
 │   ├── discretization/          #   Numerical schemes
@@ -54,7 +56,7 @@ Simulacrum/
 - **Composition over inheritance**: Fracture and plasticity models are assembled from orthogonal, independently testable axes rather than one class per published model.
 - **Constitutive models know nothing about meshes**: they operate on batched tensors at quadrature points, so a model written for FEM works unchanged in MPM or a meshfree scheme.
 - **Verify against closed forms**: every derivative is checked against finite differences, and every physics module against an analytical solution or a published benchmark.
-- **Library vs. projects**: Reusable components live in `src/simulacrum/`; research workflows live in `projects/`.
+- **Library vs. projects**: Reusable components live in `src/scion/`; research workflows live in `projects/`.
 - **Compiled backends optional**: Rust, C++ and NVIDIA Warp for hot loops. The library works without them.
 - **VTK output**: Write `.vtu` / `.vti` / `.pvd` and visualise in ParaView or interactively with PyVista.
 
@@ -210,17 +212,17 @@ warp = ["warp-lang>=1.0"]
 meshing = ["gmsh>=4.11"]
 viz  = ["pyvista", "meshio"]
 dev  = ["pytest>=7.0", "pytest-benchmark", "ruff", "mypy"]
-all  = ["simulacrum[ml,jax,warp,meshing,viz,dev,docs]"]
+all  = ["scion[ml,jax,warp,meshing,viz,dev,docs]"]
 ```
 
 ## Building the Accelerated Backends
 
 ```bash
 # Rust
-cd src/simulacrum/_backends/rust && maturin develop --release
+cd src/scion/_backends/rust && maturin develop --release
 
 # C++
-cd src/simulacrum/_backends/cpp && mkdir build && cd build && cmake .. && make
+cd src/scion/_backends/cpp && mkdir build && cd build && cmake .. && make
 
 # Warp needs no build step; GPU execution requires a CUDA device
 pip install warp-lang

@@ -6,6 +6,8 @@ derived outside the library. Everything else verifies the code against finite
 differences of its own residual, which catches inconsistency but not a shared
 misconception -- if the yield criterion and the return map were wrong in the
 same way, every other test would still pass.
+
+python -m pytest tests/examples/test_thick_cylinder.py -q
 """
 
 from __future__ import annotations

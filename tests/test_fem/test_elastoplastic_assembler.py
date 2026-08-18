@@ -5,6 +5,8 @@ The decisive test is the global tangent against finite differences: it exercises
 the whole path -- B matrices, the Voigt/Mandel boundary, the return map and the
 consistent tangent -- in the one place where an error in any of them shows up
 as a number rather than as slow convergence.
+
+python -m pytest tests/test_fem/test_elastoplastic_assembler.py -q
 """
 
 from __future__ import annotations
@@ -13,11 +15,11 @@ import numpy as np
 import pytest
 from scipy.sparse import linalg as spla
 
-from simulacrum.core.domain import Domain
-from simulacrum.discretization.fem.nonlinear_assembler import (
+from scion.core.domain import Domain
+from scion.discretization.fem.nonlinear_assembler import (
     ElastoplasticAssembler,
 )
-from simulacrum.materials.plasticity import (
+from scion.materials.plasticity import (
     DruckerPrager,
     LinearIsotropic,
     LinearKinematic,
@@ -27,8 +29,8 @@ from simulacrum.materials.plasticity import (
     Swift,
     Voce,
 )
-from simulacrum.mesh.mesh import ElementBlock, Mesh
-from simulacrum.solvers.tangent_check import check_tangent
+from scion.mesh.mesh import ElementBlock, Mesh
+from scion.solvers.tangent_check import check_tangent
 
 E, NU, Y, H = 210e3, 0.3, 250.0, 2000.0
 
@@ -247,8 +249,8 @@ def test_load_path_lands_on_the_hardening_curve():
             u[free] += spla.spsolve(r.K.tocsc()[free][:, free], -res)
         st = r.state
 
-    from simulacrum.materials.notation import from_mandel, voigt_strain_to_mandel
-    from simulacrum.materials.plasticity import von_mises_stress
+    from scion.materials.notation import from_mandel, voigt_strain_to_mandel
+    from scion.materials.plasticity import von_mises_stress
 
     eps_m = voigt_strain_to_mandel(asm.strains(u), 2)
     sigma_m = (eps_m - st.eps_p) @ model.C_el.T

@@ -64,19 +64,19 @@ import numpy as np
 # version. SciPy is already a hard dependency and carries both.
 from scipy.integrate import trapezoid
 
-from simulacrum.core.domain import Domain
-from simulacrum.discretization.fem.nonlinear_assembler import (
+from scion.core.domain import Domain
+from scion.discretization.fem.nonlinear_assembler import (
     ElastoplasticAssembler,
     StatefulOperators,
 )
-from simulacrum.materials.damage import (
+from scion.materials.damage import (
     DamageModel,
     ExponentialSoftening,
     GradientDamageModel,
 )
-from simulacrum.mesh.generators import rectangle_mesh
-from simulacrum.multiphysics import GradientDamageProblem
-from simulacrum.solvers.nonlinear import DisplacementControl
+from scion.mesh.generators import rectangle_mesh
+from scion.multiphysics import GradientDamageProblem
+from scion.solvers.nonlinear import DisplacementControl
 
 # --- geometry and material -------------------------------------------------
 LENGTH, HEIGHT, THICKNESS = 10.0, 1.0, 1.0
@@ -389,7 +389,7 @@ if __name__ == "__main__":
     # would silence every other library in the interpreter too
     import logging
 
-    from simulacrum.core.logging import set_level
+    from scion.core.logging import set_level
     set_level(logging.WARNING)
 
     quick = "--quick" in sys.argv

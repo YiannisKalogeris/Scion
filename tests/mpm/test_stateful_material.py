@@ -24,7 +24,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.discretization.mpm import (
+from scion.discretization.mpm import (
     CartesianGrid,
     ExplicitMPMStepper,
     HalfSpace,
@@ -32,10 +32,10 @@ from simulacrum.discretization.mpm import (
     get_basis,
     get_transfer,
 )
-from simulacrum.discretization.mpm.stepper import _promote
-from simulacrum.materials.eos import LinearEOS, MieGruneisen
-from simulacrum.materials.high_rate import HighRateState, JohnsonCookModel
-from simulacrum.materials.plasticity import JohnsonCook
+from scion.discretization.mpm.stepper import _promote
+from scion.materials.eos import LinearEOS, MieGruneisen
+from scion.materials.high_rate import HighRateState, JohnsonCookModel
+from scion.materials.plasticity import JohnsonCook
 
 RHO = 8930.0
 
@@ -195,7 +195,7 @@ def test_a_state_without_an_update_method_is_refused():
 def test_the_hyperelastic_path_is_unchanged():
     """The whole point of adding a branch rather than replacing the interface.
     Same problem, same material, with and without the new code present."""
-    from simulacrum.materials.hyperelastic_batched import (
+    from scion.materials.hyperelastic_batched import (
         NeoHookeanCompressible,
     )
 

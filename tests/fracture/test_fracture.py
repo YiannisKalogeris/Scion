@@ -17,8 +17,8 @@ import pytest
 # version. SciPy is already a hard dependency and carries both.
 from scipy.integrate import trapezoid
 
-from simulacrum.discretization.fem.quadrature_state import QuadratureState
-from simulacrum.materials.fracture import (
+from scion.discretization.fem.quadrature_state import QuadratureState
+from scion.materials.fracture import (
     AT1,
     AT2,
     PhaseFieldModel,
@@ -28,8 +28,8 @@ from simulacrum.materials.fracture import (
     get_split,
     voigt_tangent,
 )
-from simulacrum.solvers.bound_constrained import projected_gauss_seidel, solve_bounded
-from simulacrum.solvers.staggered import (
+from scion.solvers.bound_constrained import projected_gauss_seidel, solve_bounded
+from scion.solvers.staggered import (
     StaggeredSolver,
     normalized_slope,
     relative_energy_change,

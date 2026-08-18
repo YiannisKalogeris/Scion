@@ -35,7 +35,7 @@ from projects.diffusion_preconditioner.diffusion import (
     semigroup_snapshots,
 )
 from projects.diffusion_preconditioner.two_level import TwoLevelPreconditioner
-from simulacrum.solvers import get_preconditioner, pcg
+from scion.solvers import get_preconditioner, pcg
 from tests.test_solvers.test_krylov import heterogeneous_diffusion, poisson_2d
 
 
@@ -398,7 +398,7 @@ def test_fgmres_rescues_the_two_level_operator_around_a_non_spd_baseline(hard):
     that is exactly what FGMRES is: it assumes neither symmetry nor a fixed
     preconditioner, so it converges here regardless of whether PCG happens to.
     """
-    from simulacrum.solvers import fgmres, gmres
+    from scion.solvers import fgmres, gmres
 
     A, b = hard
     baseline = get_preconditioner("ilu", A)
@@ -420,7 +420,7 @@ def test_the_coarse_space_helps_a_nonsymmetric_solver_too(hard):
     """The coarse space is built from ``K`` and a baseline, not from the Krylov
     method, so it should accelerate GMRES as readily as PCG. Worth checking
     because nothing in the construction knows which solver will consume it."""
-    from simulacrum.solvers import gmres
+    from scion.solvers import gmres
 
     A, b = hard
     baseline = get_preconditioner("icc", A)

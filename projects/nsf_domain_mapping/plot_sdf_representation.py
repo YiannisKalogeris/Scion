@@ -13,8 +13,8 @@ Distance Functions" section:
 
 It reuses the project's own geometry code, so the rendered field, sign
 convention and tanh scale are identical to the training pipeline:
-    simulacrum.geometry.shapes  -> shape classes
-    simulacrum.geometry.sdf     -> SDF field, normalisation, interior sampling
+    scion.geometry.shapes  -> shape classes
+    scion.geometry.sdf     -> SDF field, normalisation, interior sampling
 
 Run:
     python plot_sdf_representation.py
@@ -26,8 +26,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 
-from simulacrum.geometry.shapes import FourierBlob, Ellipse, Superellipse
-from simulacrum.geometry.sdf import (
+from scion.geometry.shapes import FourierBlob, Ellipse, Superellipse
+from scion.geometry.sdf import (
     compute_sdf_from_boundary,
     normalize_sdf,
     render_shape_to_binary,

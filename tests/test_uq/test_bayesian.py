@@ -36,7 +36,7 @@ import pytest
 # version. SciPy is already a hard dependency and carries both.
 from scipy.integrate import trapezoid
 
-from simulacrum.uq.bayesian import (
+from scion.uq.bayesian import (
     PYRO_AVAILABLE,
     AdaptiveMetropolis,
     CallableLikelihood,

@@ -5,11 +5,11 @@ selective integration one of them needs.
 The thick cylinder is the anchor again, and the point of this file is the
 *direction* of each error:
 
-* :mod:`~simulacrum.shakedown.equilibrium_elements` bounds from **below**, and
+* :mod:`~scion.shakedown.equilibrium_elements` bounds from **below**, and
   rigorously -- stress is the unknown, equilibrium is exact inside each element,
   traction is continuous across every edge, and yield holds at every point by
   convexity. It must never exceed the analytic limit load.
-* :mod:`~simulacrum.shakedown.lmm` bounds from **above**, and also rigorously,
+* :mod:`~scion.shakedown.lmm` bounds from **above**, and also rigorously,
   because any admissible mechanism gives a Koiter bound and a finite element
   displacement field is one. It must never fall below.
 
@@ -24,13 +24,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.core.domain import Domain
-from simulacrum.discretization.fem.tables import QuadratureTables
-from simulacrum.materials.linear_elastic import isotropic_stiffness_mandel
-from simulacrum.materials.notation import mandel_to_voigt_tangent
-from simulacrum.mesh.generators import rectangle_mesh
-from simulacrum.mesh.mesh import ElementBlock, Mesh
-from simulacrum.shakedown import (
+from scion.core.domain import Domain
+from scion.discretization.fem.tables import QuadratureTables
+from scion.materials.linear_elastic import isotropic_stiffness_mandel
+from scion.materials.notation import mandel_to_voigt_tangent
+from scion.mesh.generators import rectangle_mesh
+from scion.mesh.mesh import ElementBlock, Mesh
+from scion.shakedown import (
     ElasticEnvelope,
     EquilibriumTriangles,
     LoadDomain,
@@ -175,7 +175,7 @@ def test_the_residual_field_is_self_equilibrated():
     equilibrated, *including* the penalty pressure. Exporting only the
     deviatoric part leaves a field out of equilibrium by order one.
     """
-    from simulacrum.shakedown import SelfEquilibrium
+    from scion.shakedown import SelfEquilibrium
     result, tables, free = _lmm(10)
     equilibrium = SelfEquilibrium(tables, free)
     assert equilibrium.residual(result.residual_stress) < 1e-9

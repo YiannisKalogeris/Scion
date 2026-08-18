@@ -18,13 +18,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection
 
-# ---- Simulacrum reusables -------------------------------------------------
-from simulacrum.mesh.mesh import Mesh, ElementBlock
-from simulacrum.core.domain import Domain
-from simulacrum.materials.linear_elastic import PlaneStress
-from simulacrum.boundary import DirichletBC, apply_dirichlet_elimination
-from simulacrum.solvers.linear import DirectSolver
-from simulacrum.discretization.fem.assembler import FEMAssembler
+# ---- Scion reusables -------------------------------------------------
+from scion.mesh.mesh import Mesh, ElementBlock
+from scion.core.domain import Domain
+from scion.materials.linear_elastic import PlaneStress
+from scion.boundary import DirichletBC, apply_dirichlet_elimination
+from scion.solvers.linear import DirectSolver
+from scion.discretization.fem.assembler import FEMAssembler
 
 # ===========================================================================
 # Problem data  (given in the project sheet; converted to SI: N, m, Pa)

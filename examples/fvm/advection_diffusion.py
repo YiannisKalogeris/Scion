@@ -55,7 +55,7 @@ from pathlib import Path
 import numpy as np
 from scipy.sparse.linalg import spsolve
 
-from simulacrum.discretization.fvm import FVMAssembler
+from scion.discretization.fvm import FVMAssembler
 
 RESULTS = Path(__file__).resolve().parent / "results"
 

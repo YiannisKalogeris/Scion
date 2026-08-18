@@ -28,17 +28,17 @@ from pathlib import Path
 
 import torch
 
-# ── Simulacrum library ──
-from simulacrum.geometry.shapes import ShapeGenerator
-from simulacrum.mesh.mesh import Mesh, ElementBlock
-from simulacrum.mesh.generators import rectangle_mesh
-from simulacrum.core.domain import Domain
-from simulacrum.core.dof import DOFMap
-from simulacrum.boundary import DirichletBC, apply_dirichlet_elimination
-from simulacrum.solvers.linear import DirectSolver
-from simulacrum.discretization.fem.assembler import FEMAssembler
-from simulacrum.discretization.fem.elements import get_element
-from simulacrum.discretization.fem.quadrature import get_quadrature
+# ── Scion library ──
+from scion.geometry.shapes import ShapeGenerator
+from scion.mesh.mesh import Mesh, ElementBlock
+from scion.mesh.generators import rectangle_mesh
+from scion.core.domain import Domain
+from scion.core.dof import DOFMap
+from scion.boundary import DirichletBC, apply_dirichlet_elimination
+from scion.solvers.linear import DirectSolver
+from scion.discretization.fem.assembler import FEMAssembler
+from scion.discretization.fem.elements import get_element
+from scion.discretization.fem.quadrature import get_quadrature
 
 # ── NSF model ──
 PROJECT_DIR = Path(__file__).resolve().parent.parent.parent / "projects" / "nsf_domain_mapping"
@@ -48,7 +48,7 @@ from neural_spline_flow import NeuralSplineFlow
 from Main_nsf import (AutoDecoderNSF, AutoDecoderMapping, create_autodecoder,
                       load_inference_model, EncoderMapping)
 from dataset import DiffeomorphismDataset
-from simulacrum.geometry.sdf import SDFRenderer
+from scion.geometry.sdf import SDFRenderer
 
 # ====================================================================
 # CONFIGURATION

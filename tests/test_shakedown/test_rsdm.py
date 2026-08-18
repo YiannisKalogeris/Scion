@@ -20,8 +20,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.materials.plasticity import VonMises
-from simulacrum.shakedown import (
+from scion.materials.plasticity import VonMises
+from scion.shakedown import (
     CyclicProgram,
     ElasticEnvelope,
     LoadDomain,
@@ -29,7 +29,7 @@ from simulacrum.shakedown import (
     elastic_factor,
     rsdm,
 )
-from simulacrum.shakedown.rsdm import _effective
+from scion.shakedown.rsdm import _effective
 
 from .cylinder import C_MANDEL, LIMIT_PRESSURE, YIELD, build_cylinder
 

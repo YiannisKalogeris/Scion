@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.materials.plasticity.hardening import (
+from scion.materials.plasticity.hardening import (
     ArmstrongFrederick,
     LinearIsotropic,
     LinearKinematic,

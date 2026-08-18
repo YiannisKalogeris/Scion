@@ -27,14 +27,14 @@ from matplotlib.collections import PolyCollection
 from pathlib import Path
 from scipy import sparse
 
-from simulacrum.mesh.mesh import Mesh, ElementBlock
-from simulacrum.mesh.generators import rectangle_mesh
-from simulacrum.core.dof import DOFMap
-from simulacrum.discretization.fem.elements import get_element
-from simulacrum.discretization.fem.quadrature import get_quadrature
-from simulacrum.materials.linear_elastic import PlaneStress
-from simulacrum.materials.geometric_nonlinear import StVenantKirchhoff
-from simulacrum.solvers.nonlinear import LoadControl
+from scion.mesh.mesh import Mesh, ElementBlock
+from scion.mesh.generators import rectangle_mesh
+from scion.core.dof import DOFMap
+from scion.discretization.fem.elements import get_element
+from scion.discretization.fem.quadrature import get_quadrature
+from scion.materials.linear_elastic import PlaneStress
+from scion.materials.geometric_nonlinear import StVenantKirchhoff
+from scion.solvers.nonlinear import LoadControl
 
 # ====================================================================
 # CONFIGURATION

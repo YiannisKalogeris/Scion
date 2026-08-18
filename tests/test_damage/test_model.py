@@ -17,7 +17,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.materials.damage import (
+from scion.materials.damage import (
     DamageModel,
     DamageState,
     EnergyRelease,

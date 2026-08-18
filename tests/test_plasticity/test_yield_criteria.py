@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.materials.plasticity.yield_criteria import (
+from scion.materials.plasticity.yield_criteria import (
     DruckerPrager,
     J2_invariant,
     P_DEV,

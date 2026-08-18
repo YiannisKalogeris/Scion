@@ -13,12 +13,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.optimization.convex import (
+from scion.optimization.convex import (
     check_projector,
     largest_feasible,
     minimize_on_subspace,
 )
-from simulacrum.shakedown import LoadDomain
+from scion.shakedown import LoadDomain
 
 
 # ---------------------------------------------------------------------------

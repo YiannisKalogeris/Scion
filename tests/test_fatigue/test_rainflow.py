@@ -14,13 +14,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.fatigue.rainflow import (
+from scion.fatigue.rainflow import (
     CycleCounts,
     rainflow,
     rainflow_matrix,
     turning_points,
 )
-from simulacrum.fatigue.rainflow import _collapse, _extract
+from scion.fatigue.rainflow import _collapse, _extract
 
 #: The sequence of ASTM E1049-85, rainflow counting example.
 ASTM = [-2.0, 1.0, -3.0, 5.0, -1.0, 3.0, -4.0, 4.0, -2.0]

@@ -15,7 +15,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.materials.plasticity import (
+from scion.materials.plasticity import (
     Associative,
     DruckerPrager,
     LinearIsotropic,
@@ -27,13 +27,13 @@ from simulacrum.materials.plasticity import (
     Voce,
     VonMises,
 )
-from simulacrum.materials.linear_elastic import isotropic_stiffness_mandel
-from simulacrum.materials.notation import from_mandel, to_mandel
-from simulacrum.materials.plasticity.return_mapping import (
+from scion.materials.linear_elastic import isotropic_stiffness_mandel
+from scion.materials.notation import from_mandel, to_mandel
+from scion.materials.plasticity.return_mapping import (
     PlasticState,
     return_map,
 )
-from simulacrum.solvers.tangent_check import check_tangent
+from scion.solvers.tangent_check import check_tangent
 
 E, NU, Y, H = 210e3, 0.3, 250.0, 2000.0
 C_EL = isotropic_stiffness_mandel(E, NU)
@@ -351,7 +351,7 @@ def test_batched_points_are_independent():
 def test_nonlinear_kinematic_hardening_is_refused_clearly():
     """Armstrong-Frederick cannot be eliminated into the relative-stress form,
     so it is rejected rather than silently approximated."""
-    from simulacrum.materials.plasticity import ArmstrongFrederick
+    from scion.materials.plasticity import ArmstrongFrederick
     with pytest.raises(NotImplementedError, match="nonlinear"):
         return_map(_tensor(e00=0.01), PlasticState.zeros(1), VonMises(),
                    LinearIsotropic(Y, H), C_EL,

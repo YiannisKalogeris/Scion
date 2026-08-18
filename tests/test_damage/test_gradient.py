@@ -19,19 +19,19 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.core.domain import Domain
-from simulacrum.discretization.fem.nonlinear_assembler import (
+from scion.core.domain import Domain
+from scion.discretization.fem.nonlinear_assembler import (
     ElastoplasticAssembler,
     StatefulOperators,
 )
-from simulacrum.materials.damage import (
+from scion.materials.damage import (
     DamageModel,
     ExponentialSoftening,
     GradientDamageModel,
 )
-from simulacrum.mesh.generators import rectangle_mesh
-from simulacrum.multiphysics import GradientDamageProblem
-from simulacrum.solvers.nonlinear import DisplacementControl
+from scion.mesh.generators import rectangle_mesh
+from scion.multiphysics import GradientDamageProblem
+from scion.solvers.nonlinear import DisplacementControl
 
 E, NU = 20.0e3, 0.2
 K0 = 1.0e-4

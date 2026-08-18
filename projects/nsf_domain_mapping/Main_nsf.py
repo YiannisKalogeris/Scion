@@ -39,7 +39,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
-from simulacrum.geometry.shapes import ShapeGenerator, SHAPE_REGISTRY
+from scion.geometry.shapes import ShapeGenerator, SHAPE_REGISTRY
 
 from dataset import DiffeomorphismDataset, generate_datasets
 from models.neural_spline_flow import NeuralSplineFlow, NSFMapping

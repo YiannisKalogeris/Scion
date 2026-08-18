@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from simulacrum.core.domain import Domain
-from simulacrum.discretization.fem.tables import QuadratureTables
-from simulacrum.materials.linear_elastic import isotropic_stiffness_mandel
-from simulacrum.mesh.mesh import ElementBlock, Mesh
-from simulacrum.shakedown import ElasticEnvelope, SelfEquilibrium, solve_elastic
+from scion.core.domain import Domain
+from scion.discretization.fem.tables import QuadratureTables
+from scion.materials.linear_elastic import isotropic_stiffness_mandel
+from scion.mesh.mesh import ElementBlock, Mesh
+from scion.shakedown import ElasticEnvelope, SelfEquilibrium, solve_elastic
 
 A_IN, B_OUT = 100.0, 200.0
 E, NU, YIELD = 210.0e3, 0.3, 250.0

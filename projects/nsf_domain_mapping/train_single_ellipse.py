@@ -29,9 +29,9 @@ import json
 _SCRIPT_DIR = Path(__file__).parent
 sys.path.insert(0, str(_SCRIPT_DIR / "models"))
 
-from simulacrum.geometry.shapes import Ellipse
-from simulacrum.geometry.harmonic_maps import HarmonicMapSolver
-from simulacrum.geometry.sdf import sample_points_in_shape
+from scion.geometry.shapes import Ellipse
+from scion.geometry.harmonic_maps import HarmonicMapSolver
+from scion.geometry.sdf import sample_points_in_shape
 from neural_spline_flow import NeuralSplineFlow
 
 # ====================================================================

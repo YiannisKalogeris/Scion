@@ -13,10 +13,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.core.domain import Domain
-from simulacrum.mesh.mesh import ElementBlock, Mesh
-from simulacrum.materials.fracture import PhaseFieldModel
-from simulacrum.multiphysics import Field, PhaseFieldFractureProblem
+from scion.core.domain import Domain
+from scion.mesh.mesh import ElementBlock, Mesh
+from scion.materials.fracture import PhaseFieldModel
+from scion.multiphysics import Field, PhaseFieldFractureProblem
 
 E, NU = 210e3, 0.3
 
@@ -272,7 +272,7 @@ def test_energy_criterion_survives_a_converged_state():
     """An elastic step leaves the energy constant to round-off. Normalising by
     a round-off span divides noise by noise; the guard must call it converged
     rather than iterating to the cap."""
-    from simulacrum.solvers.staggered import normalized_slope
+    from scion.solvers.staggered import normalized_slope
     E = 1.9361352264e-3 + 1e-13 * np.array([1.0, -0.4, 0.6, -0.5, 0.5])
     assert normalized_slope(E) == 0.0
 
@@ -280,7 +280,7 @@ def test_energy_criterion_survives_a_converged_state():
 def test_energy_criterion_is_blind_to_linear_drift():
     """gamma measures shape, not magnitude: a steady creep pins it near 45 deg
     no matter how small the creep is. This is why a second test is needed."""
-    from simulacrum.solvers.staggered import normalized_slope
+    from scion.solvers.staggered import normalized_slope
     # slopes above the round-off guard: the drift is real but gamma cannot
     # see how small it is
     for slope in (1e-3, 1e-6, 1e-8):
@@ -291,7 +291,7 @@ def test_energy_criterion_is_blind_to_linear_drift():
 
 
 def test_field_change_test_stops_a_linear_drift():
-    from simulacrum.solvers.staggered import StaggeredSolver
+    from scion.solvers.staggered import StaggeredSolver
     state = {"d": 1.0, "E": 1.0}
 
     def second():

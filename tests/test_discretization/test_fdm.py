@@ -24,8 +24,8 @@ import numpy as np
 import pytest
 from scipy.sparse.linalg import spsolve
 
-from simulacrum.discretization.fdm import FDMAssembler
-from simulacrum.discretization.fdm.stencils import (
+from scion.discretization.fdm import FDMAssembler
+from scion.discretization.fdm.stencils import (
     is_consistent,
     laplacian_1d,
     laplacian_2d_5pt,

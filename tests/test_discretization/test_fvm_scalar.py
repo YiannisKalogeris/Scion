@@ -29,7 +29,7 @@ import numpy as np
 import pytest
 from scipy.sparse.linalg import spsolve
 
-from simulacrum.discretization.fvm import (
+from scion.discretization.fvm import (
     FVMAssembler,
     LIMITER_REGISTRY,
     NoLimiter,

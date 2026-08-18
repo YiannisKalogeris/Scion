@@ -54,8 +54,8 @@ from pathlib import Path
 
 import numpy as np
 
-from simulacrum.core.logging import quiet
-from simulacrum.discretization.mpm import (
+from scion.core.logging import quiet
+from scion.discretization.mpm import (
     CartesianGrid,
     ExplicitMPMStepper,
     HalfSpace,
@@ -63,9 +63,9 @@ from simulacrum.discretization.mpm import (
     get_basis,
     get_transfer,
 )
-from simulacrum.materials.eos import MieGruneisen
-from simulacrum.materials.high_rate import HighRateState, JohnsonCookModel
-from simulacrum.materials.plasticity import JohnsonCook
+from scion.materials.eos import MieGruneisen
+from scion.materials.high_rate import HighRateState, JohnsonCookModel
+from scion.materials.plasticity import JohnsonCook
 
 RESULTS = Path(__file__).resolve().parent / "results"
 

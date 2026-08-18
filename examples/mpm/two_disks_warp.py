@@ -24,20 +24,20 @@ import time
 
 import numpy as np
 
-from simulacrum.discretization.mpm import (
+from scion.discretization.mpm import (
     APIC,
     CartesianGrid,
     ExplicitMPMStepper,
     ParticleSet,
 )
-from simulacrum.discretization.mpm.warp import (
+from scion.discretization.mpm.warp import (
     WarpMPMStepper,
     WarpParticleSet,
     device_info,
     get_device,
     sync,
 )
-from simulacrum.materials.hyperelastic_batched import NeoHookeanCompressible
+from scion.materials.hyperelastic_batched import NeoHookeanCompressible
 
 N_GRID = 64
 DX = 1.0 / N_GRID

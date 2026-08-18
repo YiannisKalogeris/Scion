@@ -60,12 +60,12 @@ from pathlib import Path
 
 import numpy as np
 
-from simulacrum.core.domain import Domain
-from simulacrum.discretization.fem.tables import QuadratureTables
-from simulacrum.materials.linear_elastic import isotropic_stiffness_mandel
-from simulacrum.materials.plasticity import VonMises
-from simulacrum.mesh.mesh import ElementBlock, Mesh
-from simulacrum.shakedown import (
+from scion.core.domain import Domain
+from scion.discretization.fem.tables import QuadratureTables
+from scion.materials.linear_elastic import isotropic_stiffness_mandel
+from scion.materials.plasticity import VonMises
+from scion.mesh.mesh import ElementBlock, Mesh
+from scion.shakedown import (
     ElasticEnvelope,
     LoadDomain,
     ResidualBasis,
@@ -313,7 +313,7 @@ if __name__ == "__main__":
     # would silence every other library in the interpreter too
     import logging
 
-    from simulacrum.core.logging import set_level
+    from scion.core.logging import set_level
     set_level(logging.WARNING)
 
     quick = "--quick" in sys.argv

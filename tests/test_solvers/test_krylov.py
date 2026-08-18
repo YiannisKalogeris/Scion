@@ -35,7 +35,7 @@ import pytest
 from scipy import sparse
 from scipy.sparse import linalg as spla
 
-from simulacrum.solvers.amg import (
+from scion.solvers.amg import (
     AMGHierarchy,
     aggregate,
     nodal_strength,
@@ -43,13 +43,13 @@ from simulacrum.solvers.amg import (
     smoothed_aggregation,
     strength_of_connection,
 )
-from simulacrum.solvers.krylov import (
+from scion.solvers.krylov import (
     KrylovResult,
     NotPositiveDefinite,
     conjugate_gradient,
     pcg,
 )
-from simulacrum.solvers.preconditioners import (
+from scion.solvers.preconditioners import (
     PRECONDITIONER_REGISTRY,
     PYAMG_AVAILABLE,
     AlgebraicMultigrid,
@@ -652,10 +652,10 @@ def elasticity_operator(nx: int, ny: int):
     Returns ``(K, near_null)`` with the three rigid-body modes restricted to the
     free DOFs -- two translations and the in-plane rotation.
     """
-    from simulacrum.core.domain import Domain
-    from simulacrum.discretization.fem.tables import QuadratureTables
-    from simulacrum.materials.linear_elastic import PlaneStrain
-    from simulacrum.mesh.generators import rectangle_mesh
+    from scion.core.domain import Domain
+    from scion.discretization.fem.tables import QuadratureTables
+    from scion.materials.linear_elastic import PlaneStrain
+    from scion.mesh.generators import rectangle_mesh
 
     domain = Domain(rectangle_mesh((0.0, 4.0), (0.0, 1.0), nx, ny), dim=2)
     tables = QuadratureTables(domain, thickness=1.0)
@@ -755,7 +755,7 @@ def test_the_near_null_space_survives_coarsening():
     """``P_tent B_coarse = B`` exactly, which is what carries the rigid-body
     modes past level one. Letting the coarse levels fall back to a constant
     vector throws them away and looks like a partial improvement."""
-    from simulacrum.solvers.amg import _tentative_prolongator
+    from scion.solvers.amg import _tentative_prolongator
 
     K, modes = elasticity_operator(12, 6)
     assignment = np.repeat(aggregate(nodal_strength(K, 2, 0.08)), 2)

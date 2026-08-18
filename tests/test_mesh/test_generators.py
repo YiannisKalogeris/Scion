@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from simulacrum.mesh import line_mesh, rectangle_mesh
+from scion.mesh import line_mesh, rectangle_mesh
 
 
 def test_line_mesh_nodes():

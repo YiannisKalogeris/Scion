@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "simulacrum"
+name = "scion"
 version = "0.1.0"
 description = "A modular computational mechanics library"
 readme = "README.md"
@@ -48,7 +48,7 @@ docs = [
     "sphinx-rtd-theme",
 ]
 all = [
-    "simulacrum[ml,jax,meshing,dev,docs]",
+    "scion[ml,jax,meshing,dev,docs]",
 ]
 
 [tool.setuptools.packages.find]

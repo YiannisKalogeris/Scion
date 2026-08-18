@@ -28,7 +28,7 @@ import numpy as np
 import pytest
 from scipy import stats
 
-from simulacrum.uq.forward import (
+from scion.uq.forward import (
     DESIGNS,
     Ishigami,
     JointIndependent,

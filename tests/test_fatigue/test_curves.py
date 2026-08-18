@@ -15,14 +15,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.fatigue.curves import (
+from scion.fatigue.curves import (
     Basquin,
     CoffinManson,
     StrainLife,
     TwoSlopeSN,
     get_curve,
 )
-from simulacrum.fatigue.mean_stress import (
+from scion.fatigue.mean_stress import (
     Gerber,
     Goodman,
     ModifiedMorrow,

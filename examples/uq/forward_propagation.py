@@ -66,7 +66,7 @@ from pathlib import Path
 
 import numpy as np
 
-from simulacrum.uq.forward import (
+from scion.uq.forward import (
     DESIGNS,
     Ishigami,
     JointIndependent,

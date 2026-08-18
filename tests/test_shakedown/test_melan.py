@@ -20,8 +20,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.materials.plasticity import VonMises
-from simulacrum.shakedown import (
+from scion.materials.plasticity import VonMises
+from scion.shakedown import (
     LoadDomain,
     ResidualBasis,
     elastic_factor,
@@ -63,7 +63,7 @@ def test_the_limit_load_is_approached_closely():
     the basis being too poor to find the slack -- and would break the moment
     the basis improved.
 
-    :mod:`simulacrum.shakedown.equilibrium_elements` is the formulation whose
+    :mod:`scion.shakedown.equilibrium_elements` is the formulation whose
     output really is bounded, and it is tested that way.
     """
     result, *_ = _problem()

@@ -14,13 +14,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.materials.linear_elastic import (
+from scion.materials.linear_elastic import (
     LinearElastic3D,
     PlaneStrain,
     PlaneStress,
     isotropic_stiffness_mandel,
 )
-from simulacrum.materials.notation import to_mandel, to_mandel4
+from scion.materials.notation import to_mandel, to_mandel4
 
 E, NU = 210e3, 0.3
 MU = E / (2 * (1 + NU))

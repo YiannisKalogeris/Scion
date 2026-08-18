@@ -61,7 +61,7 @@ import numpy as np
 import scipy.linalg
 from scipy import sparse
 
-from simulacrum.solvers.preconditioners import Preconditioner
+from scion.solvers.preconditioners import Preconditioner
 
 __all__ = ["TwoLevelPreconditioner"]
 
@@ -76,7 +76,7 @@ class TwoLevelPreconditioner(Preconditioner):
         applied automatically -- that basis lives in scaled coordinates and
         using it directly in K-space is the easiest way to get a subtly wrong
         answer that still converges.
-    baseline : the ``B^-1`` to wrap. Any :class:`~simulacrum.solvers.
+    baseline : the ``B^-1`` to wrap. Any :class:`~scion.solvers.
         preconditioners.Preconditioner`, or a callable.
     regularization : Tikhonov term added to ``E``, relative to its trace.
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.materials.notation import (
+from scion.materials.notation import (
     from_mandel,
     from_mandel4,
     mandel_to_voigt_stress,

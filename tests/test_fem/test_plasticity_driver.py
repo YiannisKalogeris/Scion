@@ -4,6 +4,8 @@ Verification for the incremental-analysis path.
 The pieces are individually tested elsewhere; what is checked here is the
 wiring: that a load path runs, that the state advances exactly once per
 accepted step, and that a rejected step leaves no trace.
+
+python -m pytest tests/test_fem/test_plasticity_driver.py -q
 """
 
 from __future__ import annotations
@@ -11,19 +13,19 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.core.domain import Domain
-from simulacrum.discretization.fem.nonlinear_assembler import (
+from scion.core.domain import Domain
+from scion.discretization.fem.nonlinear_assembler import (
     ElastoplasticAssembler,
     StatefulOperators,
 )
-from simulacrum.materials.notation import from_mandel, voigt_strain_to_mandel
-from simulacrum.materials.plasticity import (
+from scion.materials.notation import from_mandel, voigt_strain_to_mandel
+from scion.materials.plasticity import (
     LinearIsotropic,
     PlasticityModel,
     von_mises_stress,
 )
-from simulacrum.mesh.mesh import ElementBlock, Mesh
-from simulacrum.solvers.nonlinear import DisplacementControl
+from scion.mesh.mesh import ElementBlock, Mesh
+from scion.solvers.nonlinear import DisplacementControl
 
 E, NU, Y, H = 210e3, 0.3, 250.0, 2000.0
 

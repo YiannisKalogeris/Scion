@@ -33,7 +33,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.discretization.fvm import (
+from scion.discretization.fvm import (
     RIEMANN_REGISTRY,
     SHOCK_TUBES,
     SOD,

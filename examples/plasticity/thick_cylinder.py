@@ -64,20 +64,20 @@ from pathlib import Path
 
 import numpy as np
 
-from simulacrum.core.domain import Domain
-from simulacrum.core.logging import quiet
-from simulacrum.discretization.fem.nonlinear_assembler import (
+from scion.core.domain import Domain
+from scion.core.logging import quiet
+from scion.discretization.fem.nonlinear_assembler import (
     ElastoplasticAssembler,
     StatefulOperators,
 )
-from simulacrum.materials.notation import from_mandel, voigt_strain_to_mandel
-from simulacrum.materials.plasticity import (
+from scion.materials.notation import from_mandel, voigt_strain_to_mandel
+from scion.materials.plasticity import (
     PerfectPlasticity,
     PlasticityModel,
     von_mises_stress,
 )
-from simulacrum.mesh.mesh import ElementBlock, Mesh
-from simulacrum.solvers.nonlinear import DisplacementControl
+from scion.mesh.mesh import ElementBlock, Mesh
+from scion.solvers.nonlinear import DisplacementControl
 
 # --- geometry and material -------------------------------------------------
 A_IN, B_OUT = 100.0, 200.0

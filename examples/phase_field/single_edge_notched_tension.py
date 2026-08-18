@@ -44,10 +44,10 @@ from pathlib import Path
 
 import numpy as np
 
-from simulacrum.core.domain import Domain
-from simulacrum.materials.fracture import PhaseFieldModel
-from simulacrum.mesh.mesh import ElementBlock, Mesh
-from simulacrum.multiphysics import PhaseFieldFractureProblem
+from scion.core.domain import Domain
+from scion.materials.fracture import PhaseFieldModel
+from scion.mesh.mesh import ElementBlock, Mesh
+from scion.multiphysics import PhaseFieldFractureProblem
 
 # --- paper material --------------------------------------------------------
 LAM, MU = 121.15, 80.77                     # kN/mm^2

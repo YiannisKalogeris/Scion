@@ -14,12 +14,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.materials.plasticity.flow_rules import (
+from scion.materials.plasticity.flow_rules import (
     Associative,
     NonAssociative,
     get_flow_rule,
 )
-from simulacrum.materials.plasticity.yield_criteria import (
+from scion.materials.plasticity.yield_criteria import (
     DruckerPrager,
     VonMises,
 )

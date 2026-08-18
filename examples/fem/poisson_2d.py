@@ -9,14 +9,14 @@ Uses Quad4 elements with the FEM assembler and a direct solver.
 
 import numpy as np
 
-from simulacrum.core import Domain
-from simulacrum.mesh import rectangle_mesh
-from simulacrum.materials import IsotropicThermal
-from simulacrum.discretization.fem import FEMAssembler
-from simulacrum.boundary import DirichletBC, apply_dirichlet_elimination
-from simulacrum.solvers import DirectSolver
-from simulacrum.io import write_vtk
-from simulacrum.postprocessing import plot_field
+from scion.core import Domain
+from scion.mesh import rectangle_mesh
+from scion.materials import IsotropicThermal
+from scion.discretization.fem import FEMAssembler
+from scion.boundary import DirichletBC, apply_dirichlet_elimination
+from scion.solvers import DirectSolver
+from scion.io import write_vtk
+from scion.postprocessing import plot_field
 
 
 def main():

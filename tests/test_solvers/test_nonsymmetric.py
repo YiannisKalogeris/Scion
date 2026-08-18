@@ -30,9 +30,9 @@ import pytest
 from scipy import sparse
 from scipy.sparse import linalg as spla
 
-from simulacrum.solvers.krylov import KrylovBreakdown, pcg
-from simulacrum.solvers.nonsymmetric import bicg, bicgstab, fgmres, gmres
-from simulacrum.solvers.preconditioners import get_preconditioner
+from scion.solvers.krylov import KrylovBreakdown, pcg
+from scion.solvers.nonsymmetric import bicg, bicgstab, fgmres, gmres
+from scion.solvers.preconditioners import get_preconditioner
 from tests.test_solvers.test_krylov import poisson_2d
 
 METHODS = {"gmres": gmres, "fgmres": fgmres, "bicg": bicg,

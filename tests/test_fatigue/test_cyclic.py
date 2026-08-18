@@ -15,8 +15,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.fatigue.curves import StrainLife
-from simulacrum.fatigue.cyclic import (
+from scion.fatigue.curves import StrainLife
+from scion.fatigue.cyclic import (
     RambergOsgood,
     glinka,
     glinka_range,

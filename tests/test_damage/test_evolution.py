@@ -19,7 +19,7 @@ import pytest
 # version. SciPy is already a hard dependency and carries both.
 from scipy.integrate import trapezoid
 
-from simulacrum.materials.damage.evolution import (
+from scion.materials.damage.evolution import (
     ExponentialSoftening,
     LinearSoftening,
     MazarsLaw,

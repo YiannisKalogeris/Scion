@@ -4,7 +4,7 @@ and the model that composes them.
 
 Adapted from the MUSL elasto-plastic MPM library in ``_incoming``, whose README
 is a complete algorithm specification. The code here is a batched reimplementation
-in Simulacrum's idiom rather than a port -- the source integrates one particle at
+in Scion's idiom rather than a port -- the source integrates one particle at
 a time in a Python loop, which this library does not do.
 
 The external benchmarks are the ones that need no simulation:
@@ -29,14 +29,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.materials.eos import (
+from scion.materials.eos import (
     EOS_REGISTRY,
     LinearEOS,
     MieGruneisen,
     get_eos,
 )
-from simulacrum.materials.high_rate import HighRateState, JohnsonCookModel
-from simulacrum.materials.plasticity import JohnsonCook, get_isotropic
+from scion.materials.high_rate import HighRateState, JohnsonCookModel
+from scion.materials.plasticity import JohnsonCook, get_isotropic
 
 #: OFHC copper, Johnson & Cook (1983), with shock data from the same literature.
 COPPER = dict(rho=8930.0, E=124e9, nu=0.34, A=90e6, B=292e6, n=0.31, C=0.025,
@@ -432,7 +432,7 @@ def test_a_two_dimensional_tensor_is_refused():
 def test_a_rate_independent_hardening_law_is_refused():
     """This model exists for the rate term; without it PlasticityModel is the
     right path and also gives a consistent tangent."""
-    from simulacrum.materials.plasticity import LinearIsotropic
+    from scion.materials.plasticity import LinearIsotropic
     with pytest.raises(TypeError, match="Johnson-Cook"):
         JohnsonCookModel(1e9, LinearIsotropic(1e6, 1e6), bulk_modulus=1e9)
 

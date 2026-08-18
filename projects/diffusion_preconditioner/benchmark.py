@@ -24,7 +24,7 @@ the method; reporting only time hides where the gain comes from.
 What is *not* claimed here
 --------------------------
 These numbers do not reproduce the paper's tables. The paper used pyamg for AMG
-and PETSc for ICC; this runs Simulacrum's own smoothed aggregation and IC(0),
+and PETSc for ICC; this runs Scion's own smoothed aggregation and IC(0),
 whose coarsening and dropping differ in detail. The qualitative findings do
 reproduce -- large iteration reductions for Jacobi, solid gains for AMG, and
 iteration reductions for ICC that do not always pay for themselves in time --
@@ -49,8 +49,8 @@ from scipy import sparse
 
 from projects.diffusion_preconditioner.diffusion import build_coarse_space
 from projects.diffusion_preconditioner.two_level import TwoLevelPreconditioner
-from simulacrum.core.logging import quiet
-from simulacrum.solvers import get_preconditioner, pcg
+from scion.core.logging import quiet
+from scion.solvers import get_preconditioner, pcg
 
 HERE = Path(__file__).resolve().parent
 MATRICES = HERE / "matrices"
@@ -268,7 +268,7 @@ def main() -> None:
     size = QUICK if quick else FULL
 
     print("Two-level diffusion-filtered preconditioning")
-    print("  baselines from simulacrum.solvers; coarse space from this project")
+    print("  baselines from scion.solvers; coarse space from this project")
 
     A = heterogeneous_diffusion(size["n"], size["contrast"])
     kappa = condition_estimate(A)

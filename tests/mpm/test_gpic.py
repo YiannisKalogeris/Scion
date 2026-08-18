@@ -11,10 +11,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.core import small_linalg as sla
-from simulacrum.discretization.mpm import CartesianGrid, get_basis
-from simulacrum.discretization.mpm.gpic import GPICStepper, SolidBody
-from simulacrum.materials.hyperelastic_batched import NeoHookeanCompressible
+from scion.core import small_linalg as sla
+from scion.discretization.mpm import CartesianGrid, get_basis
+from scion.discretization.mpm.gpic import GPICStepper, SolidBody
+from scion.materials.hyperelastic_batched import NeoHookeanCompressible
 
 
 def _body(**kw):

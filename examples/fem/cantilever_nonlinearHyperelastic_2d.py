@@ -35,13 +35,13 @@ from pathlib import Path
 from scipy import sparse
 from scipy.sparse.linalg import spsolve
 
-from simulacrum.mesh.mesh import Mesh, ElementBlock
-from simulacrum.core.dof import DOFMap
-from simulacrum.discretization.fem.elements import get_element
-from simulacrum.discretization.fem.quadrature import get_quadrature
-from simulacrum.materials.linear_elastic import PlaneStress
-from simulacrum.materials.hyperelastic import NeoHookean, NeoHookeanDecoupled
-from simulacrum.solvers.nonlinear import DisplacementControl
+from scion.mesh.mesh import Mesh, ElementBlock
+from scion.core.dof import DOFMap
+from scion.discretization.fem.elements import get_element
+from scion.discretization.fem.quadrature import get_quadrature
+from scion.materials.linear_elastic import PlaneStress
+from scion.materials.hyperelastic import NeoHookean, NeoHookeanDecoupled
+from scion.solvers.nonlinear import DisplacementControl
 
 # ====================================================================
 # CONFIGURATION

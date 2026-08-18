@@ -28,12 +28,12 @@ import pytest
 from scipy import sparse
 from scipy.sparse import linalg as spla
 
-from simulacrum.solvers import gmres, pcg
-from simulacrum.solvers.preconditioners import (
+from scion.solvers import gmres, pcg
+from scion.solvers.preconditioners import (
     AdditiveSchwarz,
     get_preconditioner,
 )
-from simulacrum.solvers.schwarz import (
+from scion.solvers.schwarz import (
     PYMETIS_AVAILABLE,
     build_schwarz,
     grow_overlap,

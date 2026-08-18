@@ -57,7 +57,7 @@ from pathlib import Path
 
 import numpy as np
 
-from simulacrum.uq.bayesian import (
+from scion.uq.bayesian import (
     AdaptiveMetropolis,
     ConjugateGaussian,
     GaussianLikelihood,

@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.materials.damage.equivalent import (
+from scion.materials.damage.equivalent import (
     EnergyRelease,
     Mazars,
     ModifiedVonMises,

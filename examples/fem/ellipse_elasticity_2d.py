@@ -2,8 +2,8 @@
 """
 2D plane-stress elasticity on an ellipse domain.
 
-Demonstrates the full Simulacrum FEM pipeline:
-    1. Define an ellipse using simulacrum.geometry.shapes
+Demonstrates the full Scion FEM pipeline:
+    1. Define an ellipse using scion.geometry.shapes
     2. Mesh it with gmsh (Tri3 elements)
     3. Identify boundary nodes and assign BCs
     4. Assemble the stiffness matrix
@@ -21,15 +21,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 
-# ── Simulacrum imports ──────────────────────────────────────────────
-from simulacrum.geometry.shapes import Ellipse
-from simulacrum.mesh.mesh import Mesh, ElementBlock
-from simulacrum.core.domain import Domain
-from simulacrum.core.dof import DOFMap
-from simulacrum.materials.linear_elastic import PlaneStress
-from simulacrum.discretization.fem.assembler import FEMAssembler
-from simulacrum.boundary import DirichletBC, apply_dirichlet_elimination
-from simulacrum.solvers.linear import DirectSolver
+# ── Scion imports ──────────────────────────────────────────────
+from scion.geometry.shapes import Ellipse
+from scion.mesh.mesh import Mesh, ElementBlock
+from scion.core.domain import Domain
+from scion.core.dof import DOFMap
+from scion.materials.linear_elastic import PlaneStress
+from scion.discretization.fem.assembler import FEMAssembler
+from scion.boundary import DirichletBC, apply_dirichlet_elimination
+from scion.solvers.linear import DirectSolver
 
 
 # ====================================================================

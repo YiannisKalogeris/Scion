@@ -12,15 +12,15 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.core import small_linalg as sla
-from simulacrum.discretization.mpm import (
+from scion.core import small_linalg as sla
+from scion.discretization.mpm import (
     APIC,
     CartesianGrid,
     ExplicitMPMStepper,
     ParticleSet,
     get_basis,
 )
-from simulacrum.materials.hyperelastic_batched import NeoHookeanCompressible
+from scion.materials.hyperelastic_batched import NeoHookeanCompressible
 
 BASES = ["linear", "quadratic", "cubic", "gimp"]
 
@@ -156,7 +156,7 @@ def test_gimp_reduces_to_hat_and_stays_exact(lam):
     to machine precision, independently of lp -- which is what makes lp a free
     quadrature parameter rather than something that has to be tuned.
     """
-    from simulacrum.discretization.mpm.basis import uGIMP
+    from scion.discretization.mpm.basis import uGIMP
 
     rng = np.random.default_rng(7)
     b = uGIMP()
@@ -172,7 +172,7 @@ def test_gimp_reduces_to_hat_and_stays_exact(lam):
 
 def test_gimp_rejects_oversized_domain():
     """lp > dx/2 would silently truncate the support, so it must raise."""
-    from simulacrum.discretization.mpm.basis import uGIMP
+    from scion.discretization.mpm.basis import uGIMP
 
     b = uGIMP()
     fx = np.full((10, 1), 1.0)

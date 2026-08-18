@@ -17,18 +17,18 @@ import pytest
 
 wp = pytest.importorskip("warp", reason="warp-lang not installed")
 
-from simulacrum.discretization.mpm import (  # noqa: E402
+from scion.discretization.mpm import (  # noqa: E402
     APIC,
     CartesianGrid,
     ExplicitMPMStepper,
     ParticleSet,
 )
-from simulacrum.discretization.mpm.warp import (  # noqa: E402
+from scion.discretization.mpm.warp import (  # noqa: E402
     WarpMPMStepper,
     WarpParticleSet,
     get_device,
 )
-from simulacrum.materials.hyperelastic_batched import (  # noqa: E402
+from scion.materials.hyperelastic_batched import (  # noqa: E402
     NeoHookeanCompressible,
 )
 

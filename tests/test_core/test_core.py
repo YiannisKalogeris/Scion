@@ -32,15 +32,15 @@ import logging
 import numpy as np
 import pytest
 
-import simulacrum.core.small_linalg as sla
-from simulacrum.core import DOFMap, Domain, Field, get_logger
-from simulacrum.core.field import FieldLocation
-from simulacrum.core.logging import (
+import scion.core.small_linalg as sla
+from scion.core import DOFMap, Domain, Field, get_logger
+from scion.core.field import FieldLocation
+from scion.core.logging import (
     PACKAGE,
     set_level,
     use_application_logging,
 )
-from simulacrum.mesh.generators import rectangle_mesh
+from scion.mesh.generators import rectangle_mesh
 
 
 @pytest.fixture
@@ -541,7 +541,7 @@ def test_the_handler_lives_only_on_the_package_logger(clean_logging):
 def test_an_application_calling_basic_config_does_not_double_the_output(
         clean_logging):
     """The failure that actually bites. ``basicConfig`` puts a handler on the
-    root logger, and with propagation on, every Simulacrum message appeared
+    root logger, and with propagation on, every Scion message appeared
     twice in two different formats."""
     logger = get_logger(f"{PACKAGE}.solvers.linear")
     buffer = _capture(logger)
@@ -613,7 +613,7 @@ def test_a_logger_outside_the_package_gets_its_own_handler(clean_logging):
 
 def test_quiet_restores_the_level_it_found(clean_logging):
     """The scoped alternative to ``logging.disable``."""
-    from simulacrum.core.logging import quiet
+    from scion.core.logging import quiet
 
     set_level(logging.INFO)
     with quiet():
@@ -631,7 +631,7 @@ def test_quiet_restores_the_level_it_found(clean_logging):
 def test_quiet_leaves_other_libraries_alone(clean_logging):
     """The whole reason it exists. ``logging.disable`` is process-global and
     silences every logger in the interpreter, not just this package's."""
-    from simulacrum.core.logging import quiet
+    from scion.core.logging import quiet
 
     # an explicit level, because an unconfigured logger inherits the root's
     # default WARNING and would look "disabled" for reasons of its own
@@ -664,7 +664,7 @@ def test_no_example_disables_logging_process_wide():
                  for path in (root / "examples").rglob("*.py")
                  if "logging.disable(" in path.read_text()]
     assert offenders == [], (
-        f"use simulacrum.core.logging.quiet() or set_level(), which are scoped "
+        f"use scion.core.logging.quiet() or set_level(), which are scoped "
         f"to this package and reversible: {offenders}")
 
 
@@ -687,8 +687,8 @@ def test_calling_an_example_does_not_break_logging_for_the_caller():
 def test_the_library_modules_all_log_through_one_handler():
     """An integration check on the real modules rather than on invented names:
     importing several of them must not accumulate handlers."""
-    import simulacrum.solvers.nonlinear          # noqa: F401
-    import simulacrum.solvers.linear             # noqa: F401
-    import simulacrum.optimization.oed           # noqa: F401
+    import scion.solvers.nonlinear          # noqa: F401
+    import scion.solvers.linear             # noqa: F401
+    import scion.optimization.oed           # noqa: F401
 
     assert len(logging.getLogger(PACKAGE).handlers) <= 1

@@ -25,17 +25,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from simulacrum.mesh.mesh import Mesh, ElementBlock
-from simulacrum.core.domain import Domain
-from simulacrum.core.dof import DOFMap
-from simulacrum.boundary import DirichletBC, apply_dirichlet_elimination
-from simulacrum.solvers.linear import DirectSolver
-from simulacrum.discretization.fem.elements import get_element
-from simulacrum.discretization.fem.quadrature import get_quadrature
-from simulacrum.discretization.fem.mass import assemble_mass_matrix
-from simulacrum.solvers.eigen import solve_eigenvalue_problem, compute_rayleigh_damping
-from simulacrum.solvers.dynamic import NewmarkBeta, CentralDifference
-from simulacrum.materials.linear_elastic import PlaneStress
+from scion.mesh.mesh import Mesh, ElementBlock
+from scion.core.domain import Domain
+from scion.core.dof import DOFMap
+from scion.boundary import DirichletBC, apply_dirichlet_elimination
+from scion.solvers.linear import DirectSolver
+from scion.discretization.fem.elements import get_element
+from scion.discretization.fem.quadrature import get_quadrature
+from scion.discretization.fem.mass import assemble_mass_matrix
+from scion.solvers.eigen import solve_eigenvalue_problem, compute_rayleigh_damping
+from scion.solvers.dynamic import NewmarkBeta, CentralDifference
+from scion.materials.linear_elastic import PlaneStress
 
 from scipy import sparse
 

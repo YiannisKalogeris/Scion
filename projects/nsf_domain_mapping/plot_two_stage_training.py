@@ -14,7 +14,7 @@ Schematic of the two-stage multi-shape training procedure.
 The code table {z_i^*} is the hinge: produced in Stage 1, used as the
 regression target in Stage 2.
 
-Uses real shape / SDF thumbnails from simulacrum.geometry.
+Uses real shape / SDF thumbnails from scion.geometry.
 
 Run:  python plot_two_stage_training.py
 """
@@ -25,8 +25,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 
-from simulacrum.geometry.shapes import Ellipse, Superellipse, FourierBlob
-from simulacrum.geometry.sdf import compute_sdf_from_boundary, normalize_sdf
+from scion.geometry.shapes import Ellipse, Superellipse, FourierBlob
+from scion.geometry.sdf import compute_sdf_from_boundary, normalize_sdf
 
 # ----------------------------------------------------------------------------
 # Style / palette

@@ -6,7 +6,7 @@ Coarse Spaces for Ill-Conditioned Finite-Element SPD Systems* (`ΜΑΙΝ.pdf`).
 ## What is where
 
 The **baselines** the method is compared against are library code, in
-`simulacrum.solvers` — they are general-purpose and are tested as such:
+`scion.solvers` — they are general-purpose and are tested as such:
 
 | module | contents |
 |---|---|
@@ -63,7 +63,7 @@ theoretical 4×**, and independent of the number of times.
 ## Two caveats, measured
 
 **These are not the paper's numbers.** The paper used pyamg for AMG and PETSc for
-ICC; this uses Simulacrum's own smoothed aggregation and IC(0), whose coarsening
+ICC; this uses Scion's own smoothed aggregation and IC(0), whose coarsening
 and dropping differ. The qualitative findings reproduce — large reductions for
 Jacobi, solid gains for AMG, ICC reductions that do not always pay in wall-clock.
 Where a number differs from the paper, that is the baseline differing, not the

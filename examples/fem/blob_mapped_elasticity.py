@@ -40,20 +40,20 @@ import pickle
 
 import torch
 
-# ── Simulacrum library ──
-from simulacrum.geometry.shapes import FourierBlob, ShapeGenerator
-from simulacrum.mesh.mesh import Mesh, ElementBlock
-from simulacrum.mesh.generators import rectangle_mesh
-from simulacrum.core.domain import Domain
-from simulacrum.core.dof import DOFMap
-from simulacrum.boundary import DirichletBC, apply_dirichlet_elimination
-from simulacrum.solvers.linear import DirectSolver
-from simulacrum.discretization.fem.assembler import FEMAssembler
-from simulacrum.discretization.fem.elements import get_element
-from simulacrum.discretization.fem.quadrature import get_quadrature
-from simulacrum.materials.linear_elastic import PlaneStress
-from simulacrum.geometry.sdf import sample_points_in_shape, SDFRenderer
-from simulacrum.geometry.harmonic_maps import HarmonicMapSolver
+# ── Scion library ──
+from scion.geometry.shapes import FourierBlob, ShapeGenerator
+from scion.mesh.mesh import Mesh, ElementBlock
+from scion.mesh.generators import rectangle_mesh
+from scion.core.domain import Domain
+from scion.core.dof import DOFMap
+from scion.boundary import DirichletBC, apply_dirichlet_elimination
+from scion.solvers.linear import DirectSolver
+from scion.discretization.fem.assembler import FEMAssembler
+from scion.discretization.fem.elements import get_element
+from scion.discretization.fem.quadrature import get_quadrature
+from scion.materials.linear_elastic import PlaneStress
+from scion.geometry.sdf import sample_points_in_shape, SDFRenderer
+from scion.geometry.harmonic_maps import HarmonicMapSolver
 
 # ── NSF model ──
 PROJECT_DIR = Path(__file__).resolve().parent.parent.parent / "projects" / "nsf_domain_mapping"
@@ -729,8 +729,8 @@ def plot_mesh_shape(mesh, shape, shape_idx):
 
 def check_harmonic_map(shape, shape_idx, grid_size=128, bounds=(-2.5, 2.5)):
     """Visualise harmonic map quality for a shape."""
-    from simulacrum.geometry.harmonic_maps import HarmonicMapSolver
-    from simulacrum.geometry.sdf import sample_points_in_shape
+    from scion.geometry.harmonic_maps import HarmonicMapSolver
+    from scion.geometry.sdf import sample_points_in_shape
 
     solver = HarmonicMapSolver(grid_size=grid_size, bounds=bounds)
     solver.solve(shape)

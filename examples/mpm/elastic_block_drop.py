@@ -22,15 +22,15 @@ from pathlib import Path
 
 import numpy as np
 
-from simulacrum.discretization.mpm import (
+from scion.discretization.mpm import (
     APIC,
     Box,
     CartesianGrid,
     ExplicitMPMStepper,
     ParticleSet,
 )
-from simulacrum.discretization.mpm.output import ParticleOutput, particle_fields
-from simulacrum.materials.hyperelastic_batched import NeoHookeanCompressible
+from scion.discretization.mpm.output import ParticleOutput, particle_fields
+from scion.materials.hyperelastic_batched import NeoHookeanCompressible
 
 N_GRID = 48
 DX = 1.0 / N_GRID

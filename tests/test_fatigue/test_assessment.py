@@ -16,15 +16,15 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from simulacrum.fatigue.accumulation import (
+from scion.fatigue.accumulation import (
     LinearAccumulation,
     NonlinearAccumulation,
     cycle_damage,
     get_accumulation_rule,
 )
-from simulacrum.fatigue.assessment import FatigueAssessment
-from simulacrum.fatigue.curves import Basquin, CoffinManson, StrainLife
-from simulacrum.fatigue.multiaxial import (
+from scion.fatigue.assessment import FatigueAssessment
+from scion.fatigue.curves import Basquin, CoffinManson, StrainLife
+from scion.fatigue.multiaxial import (
     equivalent_strain,
     get_equivalent,
     max_principal,
@@ -35,7 +35,7 @@ from simulacrum.fatigue.multiaxial import (
     voigt_to_tensor,
     von_mises,
 )
-from simulacrum.fatigue.rainflow import rainflow
+from scion.fatigue.rainflow import rainflow
 
 E, NU = 210.0e3, 0.3
 CURVE = Basquin(sigma_f=1200.0, b=-0.095)

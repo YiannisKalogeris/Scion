@@ -13,8 +13,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "data"))
 sys.path.insert(0, str(Path(__file__).parent / "models"))
 
-from simulacrum.geometry.harmonic_maps import HarmonicMapSolver
-from simulacrum.geometry.shapes import Ellipse
+from scion.geometry.harmonic_maps import HarmonicMapSolver
+from scion.geometry.shapes import Ellipse
 from neural_spline_flow import NeuralSplineFlow, NSFMapping
 
 DEVICE = 'mps' if torch.backends.mps.is_available() else 'cpu'

@@ -92,12 +92,12 @@ from pathlib import Path
 import numpy as np
 from scipy.sparse.linalg import spsolve
 
-from simulacrum.core.domain import Domain
-from simulacrum.discretization.fem.nonlinear_assembler import (
+from scion.core.domain import Domain
+from scion.discretization.fem.nonlinear_assembler import (
     ElastoplasticAssembler,
     StatefulOperators,
 )
-from simulacrum.fatigue import (
+from scion.fatigue import (
     FatigueAssessment,
     RambergOsgood,
     StrainLife,
@@ -108,9 +108,9 @@ from simulacrum.fatigue import (
     signed_von_mises,
     voigt_to_tensor,
 )
-from simulacrum.materials.notation import voigt_strain_to_mandel
-from simulacrum.materials.plasticity import LinearIsotropic, PlasticityModel
-from simulacrum.mesh.generators import rectangle_mesh
+from scion.materials.notation import voigt_strain_to_mandel
+from scion.materials.plasticity import LinearIsotropic, PlasticityModel
+from scion.mesh.generators import rectangle_mesh
 
 # --- geometry and material -------------------------------------------------
 LENGTH, HEIGHT, THICKNESS = 100.0, 20.0, 1.0
@@ -314,7 +314,7 @@ def assess(level: float, quick: bool = False):
 
     # what the elastoplastic run actually did at that same point
     q_pl = signed_von_mises(s_pl[hot])
-    from simulacrum.fatigue import equivalent_strain
+    from scion.fatigue import equivalent_strain
     e_scalar = equivalent_strain(e_pl[hot], nu=NU)
     true_loop = rainflow(e_scalar, residue="repeat").sort_by_range()
 
@@ -408,7 +408,7 @@ def plot(low, high):
         print("\n  matplotlib not installed; skipping the figure")
         return
 
-    from simulacrum.fatigue import equivalent_strain
+    from scion.fatigue import equivalent_strain
 
     fig, ax = plt.subplots(1, 3, figsize=(14.5, 4.2))
 
@@ -467,7 +467,7 @@ if __name__ == "__main__":
     # would silence every other library in the interpreter too
     import logging
 
-    from simulacrum.core.logging import set_level
+    from scion.core.logging import set_level
     set_level(logging.WARNING)
 
     quick = "--quick" in sys.argv

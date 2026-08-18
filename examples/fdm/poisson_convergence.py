@@ -63,7 +63,7 @@ from pathlib import Path
 import numpy as np
 from scipy.sparse.linalg import spsolve
 
-from simulacrum.discretization.fdm import FDMAssembler
+from scion.discretization.fdm import FDMAssembler
 
 RESULTS = Path(__file__).resolve().parent / "results"
 

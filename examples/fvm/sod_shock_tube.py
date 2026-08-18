@@ -63,7 +63,7 @@ from pathlib import Path
 
 import numpy as np
 
-from simulacrum.discretization.fvm import (
+from scion.discretization.fvm import (
     SHOCK_TUBES,
     SOD,
     EulerEquations,

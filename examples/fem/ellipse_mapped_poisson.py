@@ -33,16 +33,16 @@ from pathlib import Path
 
 import torch
 
-from simulacrum.geometry.shapes import Ellipse
-from simulacrum.mesh.mesh import Mesh, ElementBlock
-from simulacrum.mesh.generators import rectangle_mesh
-from simulacrum.core.domain import Domain
-from simulacrum.core.dof import DOFMap
-from simulacrum.boundary import DirichletBC, apply_dirichlet_elimination
-from simulacrum.solvers.linear import DirectSolver
-from simulacrum.discretization.fem.assembler import FEMAssembler
-from simulacrum.discretization.fem.elements import get_element
-from simulacrum.discretization.fem.quadrature import get_quadrature
+from scion.geometry.shapes import Ellipse
+from scion.mesh.mesh import Mesh, ElementBlock
+from scion.mesh.generators import rectangle_mesh
+from scion.core.domain import Domain
+from scion.core.dof import DOFMap
+from scion.boundary import DirichletBC, apply_dirichlet_elimination
+from scion.solvers.linear import DirectSolver
+from scion.discretization.fem.assembler import FEMAssembler
+from scion.discretization.fem.elements import get_element
+from scion.discretization.fem.quadrature import get_quadrature
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent.parent / "projects" / "nsf_domain_mapping"
 sys.path.insert(0, str(PROJECT_DIR / "models"))
@@ -229,10 +229,10 @@ def _report_relative_l2(kind, a, b, **kw):
     if not REPORT_RELATIVE_L2:
         return
     try:
-        from simulacrum.postprocessing.error_norms import (
+        from scion.postprocessing.error_norms import (
             l2_error_direct, l2_error_pullback)
     except ImportError:
-        print("  (relative L2 skipped: simulacrum.postprocessing.error_norms "
+        print("  (relative L2 skipped: scion.postprocessing.error_norms "
               "not importable)")
         return
 
@@ -551,8 +551,8 @@ def harmonic_anisotropy(shape, bounds, grid_size=512, n_pts=20000,
     Returns (x, xi, kappa): physical points, their square images, and the
     condition number of D Phi there -- which equals that of D psi at xi.
     """
-    from simulacrum.geometry.harmonic_maps import HarmonicMapSolver
-    from simulacrum.geometry.sdf import sample_points_in_shape
+    from scion.geometry.harmonic_maps import HarmonicMapSolver
+    from scion.geometry.sdf import sample_points_in_shape
 
     solver = HarmonicMapSolver(grid_size=grid_size, bounds=bounds)
     solver.solve(shape)

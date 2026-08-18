@@ -15,9 +15,9 @@ import pickle
 from tqdm import tqdm
 
 
-from simulacrum.geometry.shapes import ShapeGenerator, ClosedCurve, SHAPE_CLASSES
-from simulacrum.geometry.sdf import SDFRenderer, sample_points_in_shape
-from simulacrum.geometry.harmonic_maps import HarmonicMapSolver, interpolate_harmonic_map
+from scion.geometry.shapes import ShapeGenerator, ClosedCurve, SHAPE_CLASSES
+from scion.geometry.sdf import SDFRenderer, sample_points_in_shape
+from scion.geometry.harmonic_maps import HarmonicMapSolver, interpolate_harmonic_map
 
 
 @dataclass
