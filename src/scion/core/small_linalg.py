@@ -81,3 +81,51 @@ def transpose(F: np.ndarray) -> np.ndarray:
 def identity(n: int, dim: int, dtype=np.float64) -> np.ndarray:
     """A stack of ``n`` identity matrices."""
     return np.tile(np.eye(dim, dtype=dtype), (n, 1, 1))
+
+
+def signed_svd(F: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Batched SVD with ``det(U) = det(V) = +1``.
+
+    ``F = U diag(s) V^T``. The one routine here that *does* call ``np.linalg``:
+    a closed-form 3x3 SVD exists (McAdams et al. 2011) but is several hundred
+    lines of Jacobi sweeps, and getting it subtly wrong would be far more
+    expensive than the call. ``np.linalg.svd`` is already batched over the
+    leading axis.
+
+    Why the sign fix
+    ----------------
+    An unmodified SVD returns whichever ``U``, ``V`` the algorithm reaches, and
+    for an inverted element (``det F < 0``) or even a merely unlucky rotation
+    those can be *reflections*. Every corotated and principal-stretch model
+    written against this assumes ``U V^T`` is the rotation from the polar
+    decomposition, so a reflection silently produces a stress that rotates the
+    material the wrong way. Flipping the last column of ``U`` together with the
+    last singular value keeps ``U diag(s) V^T == F`` exactly while forcing both
+    factors into ``SO(d)``.
+
+    The consequence to know: ``s`` is sorted descending as usual, but the last
+    entry may be **negative** for an inverted input. That is the correct and
+    useful behaviour -- it is what lets an inversion-robust model such as
+    :class:`~scion.materials.hencky.FixedCorotated` pull the element back --
+    but a caller that takes ``log(s)`` must guard it.
+    """
+    U, s, Vt = np.linalg.svd(F)
+    U, s, Vt = U.copy(), s.copy(), Vt.copy()
+
+    # Each factor is fixed *independently*. Testing the product instead --
+    # det(U) det(V), which is just sign(det F) -- silently passes the common
+    # case where both are reflections and the two -1s cancel.
+    #
+    # Negating the last column of either factor must be paired with negating
+    # the last singular value to keep U diag(s) V^T == F. When both are
+    # reflections that happens twice and s is left unchanged, which is correct:
+    # a rotation-rotation pair needs no signed stretch.
+    flip_u = np.linalg.det(U) < 0.0
+    U[flip_u, :, -1] *= -1.0
+    s[flip_u, -1] *= -1.0
+
+    flip_v = np.linalg.det(Vt) < 0.0
+    Vt[flip_v, -1, :] *= -1.0
+    s[flip_v, -1] *= -1.0
+
+    return U, s, Vt

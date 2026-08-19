@@ -9,6 +9,7 @@ with no restructuring.
 State carried per particle:
 
     x      (n, dim)        current position
+    X      (n, dim)        reference position (never changes during a solve)
     v      (n, dim)        velocity
     F      (n, dim, dim)   deformation gradient
     C      (n, dim, dim)   APIC affine velocity matrix
@@ -31,10 +32,20 @@ class ParticleSet:
     """Struct-of-arrays material point state."""
 
     def __init__(self, x, v=None, vol0=None, density=1.0, lp0=None,
-                 dtype=np.float64):
+                 dtype=np.float64, X=None):
         self.dtype = dtype
         self.x = np.ascontiguousarray(x, dtype=dtype)
         self.n, self.dim = self.x.shape
+
+        # Reference position. Defaults to the initial placement, which is the
+        # only sensible reading of "undeformed", and is a *copy* so that
+        # advecting x never silently moves the reference configuration with it.
+        #
+        # The updated-Lagrangian stepper never reads this; the total-Lagrangian
+        # one is built on it, and so is every material-manifold quantity, since
+        # the manifold X lives on is exactly what MPM otherwise fails to carry.
+        self.X = (self.x.copy() if X is None
+                  else np.ascontiguousarray(X, dtype=dtype))
 
         self.v = (np.zeros_like(self.x) if v is None
                   else np.ascontiguousarray(v, dtype=dtype))
@@ -57,6 +68,15 @@ class ParticleSet:
         self.lp0 = np.ascontiguousarray(np.broadcast_to(
             np.asarray(lp0, dtype=dtype), (self.n, self.dim)))
         self.lp = self.lp0.copy()
+
+        # Convected particle domain, ``(n, dim, dim)``, rows are half-edge
+        # vectors. Starts axis-aligned and equal to lp0; CPDI convects it with
+        # F, at which point it is no longer axis-aligned and ``lp`` can no
+        # longer describe it -- which is exactly why it is a separate array.
+        self.domain0 = np.zeros((self.n, self.dim, self.dim), dtype=dtype)
+        for a in range(self.dim):
+            self.domain0[:, a, a] = self.lp0[:, a]
+        self.domain = self.domain0.copy()
 
     # ------------------------------------------------------------------
     @classmethod
@@ -94,7 +114,8 @@ class ParticleSet:
         """Merge two particle sets (e.g. two bodies with different velocities)."""
         out = object.__new__(ParticleSet)
         out.dtype, out.dim = self.dtype, self.dim
-        for f in ("x", "v", "F", "C", "vol0", "mass", "lp0", "lp"):
+        for f in ("x", "X", "v", "F", "C", "vol0", "mass", "lp0", "lp",
+                  "domain0", "domain"):
             setattr(out, f, np.concatenate([getattr(self, f), getattr(other, f)]))
         out.n = out.x.shape[0]
         return out
@@ -106,6 +127,9 @@ class ParticleSet:
         ``"none"``    uGIMP: the domain keeps its initial size. Cheap, stable,
                       and the usual choice; the domain is only a quadrature
                       device, not a material region.
+        ``"cpdi"``    CPDI: the domain is a parallelogram convected in full by
+                      ``F``, so rotation and shear are both tracked. Requires a
+                      :class:`~.cpdi.CPDIGrid`; the point bases ignore it.
         ``"stretch"`` cpGIMP: each half-width scales with the diagonal stretch,
                       ``lp_i = lp0_i * F_ii``. Tracks large uniaxial stretching
                       better, but ignores rotation -- for a rotating body the
@@ -118,6 +142,12 @@ class ParticleSet:
         the basis rather than failing silently.
         """
         if mode == "none":
+            return
+        if mode == "cpdi":
+            # r_k = F r_k^0 (Sadeghirad et al. Eq. 22). The full tensor, so
+            # rotation is tracked rather than discarded -- the whole point of
+            # CPDI over cpGIMP.
+            self.domain = np.einsum("pij,pkj->pki", self.F, self.domain0)
             return
         if mode != "stretch":
             raise ValueError(f"Unknown domain update mode '{mode}'")
@@ -139,3 +169,7 @@ class ParticleSet:
     def volume(self) -> np.ndarray:
         """Current volume, V = J V0."""
         return self.jacobian() * self.vol0
+
+    def displacement(self) -> np.ndarray:
+        """``u = x - X``. Meaningful only if ``X`` is the true reference."""
+        return self.x - self.X

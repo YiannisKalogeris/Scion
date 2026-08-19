@@ -17,6 +17,8 @@ Run from the project root:
     python examples/fem/ellipse_elasticity_2d.py
 """
 
+from pathlib import Path
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
@@ -226,7 +228,10 @@ plt.suptitle(
     fontsize=13,
 )
 plt.tight_layout()
-plt.savefig("ellipse_elasticity_2d.png", dpi=150)
+# anchored to this file, not the working directory -- see poisson_2d.py
+_out = Path(__file__).resolve().parent / "results" / "ellipse_elasticity_2d.png"
+_out.parent.mkdir(parents=True, exist_ok=True)
+plt.savefig(_out, dpi=150)
 plt.show()
 
-print("\nDone. Saved figure to ellipse_elasticity_2d.png")
+print(f"\nDone. Saved figure to {_out}")

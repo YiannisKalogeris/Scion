@@ -55,15 +55,44 @@ class _Appended:
         return b"".join(self._blocks)
 
 
-def flatten_for_vtk(array: np.ndarray) -> np.ndarray:
+def flatten_for_vtk(array: np.ndarray, n_components: int | None = None) -> np.ndarray:
     """Reorder a C-ordered ``(nx, ny[, nz])`` array into VTK's x-fastest order.
 
     Scion grids store the last axis fastest; VTK expects the first. Getting
     this wrong produces a transposed field that still *looks* plausible, which
     is exactly the kind of error that survives visual inspection.
+
+    Parameters
+    ----------
+    array        : ``(nx, ny[, nz])`` for a scalar, or ``(nx, ny[, nz], c)``
+                   for a field with ``c`` components per point
+    n_components : pass ``c`` for a vector or tensor field, leave ``None`` for
+                   a scalar
+
+    The trap this parameter exists to close: a component axis is not a spatial
+    axis, and reversing it too interleaves the components wrongly. Without
+    ``n_components`` a ``(nx, ny, 3)`` vector field is indistinguishable from a
+    3-deep scalar grid, so it is silently scrambled -- the field still has the
+    right values in the right count and only the arrangement is wrong, which no
+    amount of looking at it in ParaView will reveal.
+
+    Returns
+    -------
+    ``(n_points,)`` for a scalar, ``(n_points, n_components)`` otherwise --
+    either shape is what :func:`write_image_vti` expects.
     """
     a = np.asarray(array)
-    return np.transpose(a, axes=tuple(reversed(range(a.ndim)))).ravel()
+    if n_components is None:
+        return np.transpose(a, axes=tuple(reversed(range(a.ndim)))).ravel()
+
+    if a.ndim < 2 or a.shape[-1] != n_components:
+        raise ValueError(
+            f"n_components={n_components} but array has shape {a.shape}; "
+            "the component axis must be last"
+        )
+    spatial = a.ndim - 1
+    order = tuple(reversed(range(spatial))) + (spatial,)
+    return np.transpose(a, axes=order).reshape(-1, n_components)
 
 
 def write_image_vti(
@@ -90,10 +119,13 @@ def write_image_vti(
     spacing = ([float(spacing)] * dim if np.isscalar(spacing)
                else [float(s) for s in np.atleast_1d(spacing)])
 
+    # A padded axis has one node, so its spacing is geometrically irrelevant --
+    # but it must not be zero. Readers divide by spacing (gradients, cell size),
+    # and a zero there turns a valid 2-D grid into inf/nan downstream.
     while len(dims) < 3:
         dims.append(1)
         origin.append(0.0)
-        spacing.append(0.0)
+        spacing.append(1.0)
 
     extent = f"0 {dims[0]-1} 0 {dims[1]-1} 0 {dims[2]-1}"
     n_expected = dims[0] * dims[1] * dims[2]

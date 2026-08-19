@@ -21,10 +21,12 @@ from .basis import (
     get_basis,
     uGIMP,
 )
+from .cpdi import CPDIGrid, corner_offsets
 from .boundary import Box, GridBC, HalfSpace, PrescribedVelocity
 from .particles import ParticleSet
 from .stepper import ExplicitMPMStepper
-from .transfer import APIC, FLIP, PIC, Transfer, get_transfer
+from .total_lagrangian import TotalLagrangianStepper
+from .transfer import APIC, FLIP, MLSMPM, PIC, PolyPIC, Transfer, get_transfer
 
 __all__ = [
     # grid
@@ -46,6 +48,10 @@ __all__ = [
     "ParticleSet",
     # time integration
     "ExplicitMPMStepper",
+    "TotalLagrangianStepper",
+    "PolyPIC",
+    "MLSMPM",
+    "CPDIGrid",
     # particle <-> grid transfer
     "Transfer",
     "PIC",

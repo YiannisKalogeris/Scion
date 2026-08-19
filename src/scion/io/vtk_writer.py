@@ -33,17 +33,25 @@ def write_vtk(
     mesh: Mesh,
     point_data: dict[str, np.ndarray] | None = None,
     cell_data: dict[str, list[np.ndarray]] | None = None,
-) -> None:
+) -> Path:
     """Write a single VTU file.
 
     Parameters
     ----------
     path : output file path (.vtu)
     mesh : Scion Mesh
-    point_data : {name: (n_nodes, ...) array}
+    point_data : {name: (n_nodes, ...) array}; 2-component vectors are padded
+                 to three, because VTK vectors are always 3-D
     cell_data : {name: [array_per_block, ...]}
+
+    Returns
+    -------
+    The path written, so this composes with ``TimeSeriesWriter.add``.
     """
     import meshio
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
 
     # Pad to 3-D if needed (VTK requires 3-D coordinates)
     nodes = mesh.nodes
@@ -53,16 +61,31 @@ def write_vtk(
 
     cells = []
     for blk in mesh.element_blocks:
-        mtype = _SIM_TO_MESHIO.get(blk.etype, blk.etype)
-        cells.append(meshio.CellBlock(mtype, blk.connectivity))
+        if blk.etype not in _SIM_TO_MESHIO:
+            raise KeyError(
+                f"element type {blk.etype!r} has no meshio equivalent; "
+                f"known types are {sorted(_SIM_TO_MESHIO)}"
+            )
+        cells.append(meshio.CellBlock(_SIM_TO_MESHIO[blk.etype], blk.connectivity))
+
+    # Same reason particles.py pads: a 2-component array is not a VTK vector,
+    # and writing one leaves the same displacement field with a different
+    # component count depending on which writer produced it.
+    pdata = {}
+    for name, arr in (point_data or {}).items():
+        arr = np.asarray(arr)
+        if arr.ndim == 2 and arr.shape[1] == 2:
+            arr = np.hstack([arr, np.zeros((arr.shape[0], 1), dtype=arr.dtype)])
+        pdata[name] = arr
 
     m = meshio.Mesh(
         points=nodes,
         cells=cells,
-        point_data=point_data or {},
+        point_data=pdata,
         cell_data=cell_data or {},
     )
     m.write(str(path))
+    return path
 
 
 def write_vtk_time_series(
@@ -80,6 +103,14 @@ def write_vtk_time_series(
     -------
     List of written VTU file paths.
     """
+    # zip() would silently write min(len(a), len(b)) frames and leave the rest
+    # of the history on the floor without a word
+    if len(time_steps) != len(fields):
+        raise ValueError(
+            f"{len(time_steps)} time steps but {len(fields)} field dicts; "
+            "they must correspond one-to-one"
+        )
+
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
 

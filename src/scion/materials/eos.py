@@ -120,6 +120,60 @@ class LinearEOS(EquationOfState):
         return self._K * (eta - 1.0)
 
 
+class TaitEOS(EquationOfState):
+    r"""``p = K (eta^gamma - 1)``, the weakly compressible liquid.
+
+    The standard closure for treating a liquid as *slightly* compressible
+    instead of solving an incompressibility constraint: pick ``K`` large enough
+    that the density varies by a percent or so, and the pressure field that
+    enforces near-incompressibility comes out of the equation of state for free.
+    That trades a global Poisson solve for a stiffer time step, which is the
+    right trade for an explicit particle method and the wrong one for an
+    implicit solver.
+
+    ``gamma = 7`` is the usual value for water and is what makes the response
+    stiffen sharply under compression; ``gamma = 1`` degenerates to
+    :class:`LinearEOS`.
+
+    Choosing K
+    ----------
+    Do **not** use the physical bulk modulus of water (2.2 GPa) unless you want
+    its sound speed and the time step that implies. The convention is to pick
+    ``K = rho_0 c^2 / gamma`` with an artificial ``c`` about ten times the
+    fastest flow speed, which caps density variation near 1% at a tractable
+    step. :meth:`for_flow_speed` does that arithmetic.
+    """
+
+    name = "tait"
+
+    def __init__(self, bulk_modulus: float, gamma: float = 7.0):
+        self._K = float(bulk_modulus)
+        self.gamma = float(gamma)
+        if self._K <= 0.0:
+            raise ValueError("the bulk modulus must be positive")
+        if self.gamma <= 0.0:
+            raise ValueError("gamma must be positive")
+
+    @classmethod
+    def for_flow_speed(cls, density: float, flow_speed: float,
+                       gamma: float = 7.0, mach: float = 0.1) -> "TaitEOS":
+        """Pick ``K`` so the density varies by roughly ``mach^2``.
+
+        ``c = flow_speed / mach`` and ``K = rho c^2 / gamma``.
+        """
+        c = float(flow_speed) / float(mach)
+        return cls(float(density) * c * c / float(gamma), gamma)
+
+    @property
+    def bulk_modulus(self) -> float:
+        # dp/d(eta) at eta = 1
+        return self._K * self.gamma
+
+    def pressure(self, compression, energy=None):
+        eta = np.asarray(compression, dtype=float)
+        return self._K * (eta ** self.gamma - 1.0)
+
+
 class MieGruneisen(EquationOfState):
     r"""Mie-Grüneisen with a linear shock Hugoniot.
 

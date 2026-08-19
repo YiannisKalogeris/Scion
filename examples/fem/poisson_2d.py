@@ -7,6 +7,8 @@ Example: Solve the 2-D Poisson equation on a unit square.
 Uses Quad4 elements with the FEM assembler and a direct solver.
 """
 
+from pathlib import Path
+
 import numpy as np
 
 from scion.core import Domain
@@ -17,6 +19,8 @@ from scion.boundary import DirichletBC, apply_dirichlet_elimination
 from scion.solvers import DirectSolver
 from scion.io import write_vtk
 from scion.postprocessing import plot_field
+
+RESULTS = Path(__file__).resolve().parent / "results"
 
 
 def main():
@@ -51,8 +55,12 @@ def main():
     print(f"Solution range: [{u.min():.6f}, {u.max():.6f}]")
 
     # 7. Write output
-    write_vtk("poisson_result.vtu", mesh, point_data={"temperature": u})
-    print("Wrote poisson_result.vtu")
+    #    Anchored to this file, not the working directory: a bare relative path
+    #    here dropped the .vtu wherever the example happened to be launched
+    #    from, which for `python -m examples.fem.poisson_2d` is the repo root.
+    out = RESULTS / "poisson_result.vtu"
+    write_vtk(out, mesh, point_data={"temperature": u})
+    print(f"Wrote {out}")
 
     # 8. (Optional) interactive plot
     # plot_field(mesh, u, field_name="temperature")

@@ -53,6 +53,14 @@ from .particles import ParticleSet
 from .transfer import Transfer
 
 
+def _domain_kwarg(grid, particles) -> dict:
+    """Pass the convected domain only to a grid that wants it."""
+    from .cpdi import CPDIGrid
+    if isinstance(grid, CPDIGrid):
+        return {"domain": particles.domain}
+    return {}
+
+
 def _promote(tensor: np.ndarray, fill_diagonal: bool) -> np.ndarray:
     """Embed ``(n, d, d)`` in ``(n, 3, 3)``. ``d = 3`` passes straight through.
 
@@ -132,7 +140,8 @@ class ExplicitMPMStepper:
             VsigmaT = particles.vol0[:, None, None] * np.einsum(
                 "pij,pkj->pik", P, particles.F
             )
-            return -np.einsum("pij,pkj->pki", VsigmaT, st.grad_w)
+            return -np.einsum("pij,pkj->pki", VsigmaT,
+                              self.transfer.force_kernel(self.grid, st))
 
         # path-dependent: use the stress the previous step left behind. On the
         # very first call there is none, so evaluate the material at zero rate
@@ -145,7 +154,8 @@ class ExplicitMPMStepper:
         J = sla.det(particles.F)
         Vsigma = ((particles.vol0 * J)[:, None, None]
                   * self.stress[:, :dim, :dim])
-        return -np.einsum("pij,pkj->pki", Vsigma, st.grad_w)
+        return -np.einsum("pij,pkj->pki", Vsigma,
+                          self.transfer.force_kernel(self.grid, st))
 
     # ------------------------------------------------------------------
     def _constitutive_update(self, particles: ParticleSet, L: np.ndarray,
@@ -163,7 +173,8 @@ class ExplicitMPMStepper:
 
         # 1. stencil + P2G
         #    lp is passed unconditionally; point bases ignore it
-        st = grid.build_stencil(particles.x, lp=getattr(particles, "lp", None))
+        st = grid.build_stencil(particles.x, lp=getattr(particles, "lp", None),
+                                **_domain_kwarg(grid, particles))
         grid_m, grid_mv = self.transfer.p2g(particles, grid, st)
 
         f_int = self.internal_force(particles, st)
@@ -182,6 +193,12 @@ class ExplicitMPMStepper:
         # 3. G2P (also updates F and x)
         self.transfer.g2p(particles, grid, st, grid_v, dt)
 
+        #    positions must be folded back before the next stencil build; the
+        #    stencil itself wraps indices, so an unwrapped particle finds nodes
+        #    happily and nothing complains while the body leaves the domain
+        if grid.any_periodic:
+            grid.wrap_positions(particles.x)
+
         #    3b. path-dependent constitutive update, on the new F and the
         #        velocity gradient the grid solve just produced. Recomputed
         #        here rather than returned by g2p so the transfer classes stay
@@ -190,8 +207,15 @@ class ExplicitMPMStepper:
             L = np.einsum("pka,pkb->pab", grid_v[st.node_id], st.grad_w)
             self._constitutive_update(particles, L, dt)
 
-        #    domain follows the new F, so it must come after G2P
-        if grid.basis.requires_domain and self.domain_update != "none":
+        #    domain follows the new F, so it must come after G2P.
+        #    A CPDIGrid always needs it convected, whatever its grid basis --
+        #    the domain is the method, not a property of the basis, and
+        #    `requires_domain` is False for the linear hat CPDI usually pairs
+        #    with, so keying off it alone leaves the domain frozen at t = 0.
+        from .cpdi import CPDIGrid
+        if isinstance(grid, CPDIGrid):
+            particles.update_domain("cpdi")
+        elif grid.basis.requires_domain and self.domain_update != "none":
             particles.update_domain(self.domain_update)
 
         # 4. grid reset is implicit: grid_m / grid_v go out of scope

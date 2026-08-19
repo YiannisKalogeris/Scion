@@ -100,10 +100,15 @@ def run(cells_across: int, material: JohnsonCookModel, cfl: float = 0.15,
         transfer=None):
     """One impact, at a grid resolution of ``cells_across`` over the diameter."""
     dx = DIAMETER / cells_across
-    pad = 3
-    origin = (-pad * dx, -pad * dx)
-    shape = (int(np.ceil((DIAMETER + 2 * pad * dx) / dx)),
-             int(np.ceil((LENGTH + 2 * pad * dx) / dx)))
+    # The margin has to be a *physical* distance, not a cell count. The bar
+    # mushrooms outward by a fixed fraction of its diameter, while a 3-cell pad
+    # shrinks as the mesh refines -- so the coarse runs fitted and the fine ones
+    # pushed particles off the grid, which surfaces as an out-of-bounds index
+    # deep inside P2G rather than as anything mentioning the domain.
+    margin = max(3.0 * dx, 0.6 * DIAMETER)
+    origin = (-margin, -margin)
+    shape = (int(np.ceil((DIAMETER + 2 * margin) / dx)),
+             int(np.ceil((LENGTH + 2 * margin) / dx)))
     grid = CartesianGrid(shape=shape, dx=dx, origin=origin,
                          basis=get_basis("quadratic"))
 

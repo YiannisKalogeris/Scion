@@ -109,7 +109,10 @@ class ParticleOutput:
     def __init__(self, directory, material=None, name: str = "particles",
                  grid=None, verbose: bool = True, body_force=None):
         self.directory = Path(directory)
-        self.body_force = (np.zeros(3) if body_force is None
+        # Left as None rather than zeros(3): the rest of the MPM package is
+        # dimension-generic, so hard-coding 3 here broke every 2-D run that did
+        # not pass a body force, in the momentum diagnostic below.
+        self.body_force = (None if body_force is None
                            else np.asarray(body_force, dtype=float))
         self.material = material
         self.grid = grid
@@ -134,6 +137,8 @@ class ParticleOutput:
             if self._p0 is None:
                 self._p0 = particles.linear_momentum()
                 self._m_total = particles.mass.sum()
+                if self.body_force is None:
+                    self.body_force = np.zeros(particles.dim)
             # momentum is conserved only up to the impulse of the body force,
             # so compare against p0 + m g t rather than p0
             expected = self._p0 + self._m_total * self.body_force * t

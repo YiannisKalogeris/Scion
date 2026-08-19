@@ -44,6 +44,35 @@ class Basis(ABC):
     stencil_size: int
     requires_domain: bool = False
 
+    #: Highest derivative order :meth:`derivatives_1d` can supply. A basis whose
+    #: second derivative is a singular measure rather than a function reports 1
+    #: and raises rather than returning the almost-everywhere value, which is
+    #: zero and would be actively misleading -- see :meth:`second_derivatives_1d`.
+    max_derivative: int = 1
+
+    def second_derivatives_1d(self, fx: np.ndarray,
+                              lp: np.ndarray | None = None) -> np.ndarray:
+        """``d2w/dfx2``, shaped like the first return of :meth:`weights_1d`.
+
+        Needed by configurational-force diagnostics: the discrete force
+        conjugate to a particle's *reference* position is driven by the second
+        material gradient of the basis, so its regularity -- not the
+        particle-domain representation -- is what bounds the force at a cell
+        crossing.
+
+        Bases with ``max_derivative == 1`` raise. For a piecewise-linear hat the
+        second derivative is zero inside every cell and a Dirac measure on each
+        cell boundary; returning the zero would report *no* configurational
+        force for the basis that has the worst of it.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} has max_derivative="
+            f"{self.max_derivative}: its second derivative is a singular "
+            "measure supported on cell boundaries, not a function, so there is "
+            "no array to return. Use a B-spline of degree >= 2, or uGIMP, whose "
+            "particle domain bounds it."
+        )
+
     @abstractmethod
     def base_offset(self) -> float:
         """Shift applied before ``floor`` to locate the first stencil node."""
@@ -101,6 +130,7 @@ class QuadraticBSpline(Basis):
     """
 
     stencil_size = 3
+    max_derivative = 2
 
     def base_offset(self) -> float:
         return 0.5
@@ -117,6 +147,12 @@ class QuadraticBSpline(Basis):
         dw = np.stack([fx - 1.5, -2.0 * (fx - 1.0), fx - 0.5], axis=1)
         return w, dw
 
+    def second_derivatives_1d(self, fx, lp=None):
+        # constant within the support, and the smallest bounded second
+        # derivative of any basis here -- which is why this is the default
+        one = np.ones_like(fx)
+        return np.stack([one, -2.0 * one, one], axis=1)
+
     def apic_inv_D(self, dx: float) -> float:
         return 4.0 / (dx * dx)
 
@@ -126,6 +162,7 @@ class CubicBSpline(Basis):
     nodes in 2-D and 64 in 3-D -- noticeably more expensive than quadratic."""
 
     stencil_size = 4
+    max_derivative = 2
 
     def base_offset(self) -> float:
         return 1.0
@@ -151,6 +188,20 @@ class CubicBSpline(Basis):
             axis=1,
         )
         return w, dw
+
+    def second_derivatives_1d(self, fx, lp=None):
+        # piecewise linear in fx, and continuous across cell boundaries --
+        # the C2 regularity the cubic spline is chosen for
+        d0, d1, d2, d3 = fx, fx - 1.0, 2.0 - fx, 3.0 - fx
+        return np.stack(
+            [
+                2.0 - d0,
+                3.0 * d1 - 2.0,
+                3.0 * d2 - 2.0,
+                2.0 - d3,
+            ],
+            axis=1,
+        )
 
     def apic_inv_D(self, dx: float) -> float:
         return 3.0 / (dx * dx)
@@ -190,6 +241,7 @@ class uGIMP(Basis):
 
     stencil_size = 3
     requires_domain = True
+    max_derivative = 2
 
     #: below this lam the formula is ill-conditioned; fall back to the linear hat
     LAM_FLOOR = 1.0e-9
@@ -250,6 +302,48 @@ class uGIMP(Basis):
             dw = np.where(tiny, hat_dw, dw)
 
         return w, dw
+
+    def second_derivatives_1d(self, fx, lp=None):
+        r"""Piecewise constant, and unbounded as ``lp -> 0``.
+
+        The three branches give ``1/(2 lam)`` on the quadratic tails, ``0`` on
+        the linear part, and ``-1/lam`` where the node sits inside the particle
+        domain. So GIMP does bound the second derivative -- but only through the
+        particle width, and the bound diverges as the domain shrinks, recovering
+        the linear hat's Dirac measure in the limit. That is the precise sense
+        in which a particle-domain remedy and a grid-regularity remedy are not
+        the same fix.
+        """
+        if lp is None:
+            raise ValueError(
+                "uGIMP needs the particle domain half-width; pass lp."
+            )
+        lam = np.asarray(lp)
+        if lam.shape != fx.shape:
+            lam = np.broadcast_to(lam, fx.shape)
+
+        k = np.arange(3).reshape(1, 3, 1)
+        r = fx[:, None, :] - k
+        lam = lam[:, None, :]
+        a = np.abs(r)
+
+        outer = (a > 1.0 - lam) & (a < 1.0 + lam)
+        inner = a <= lam
+
+        d2w = np.zeros_like(r)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            d2w = np.where(outer, 1.0 / (2.0 * lam), d2w)
+            d2w = np.where(inner, -1.0 / lam, d2w)
+
+        # the lam -> 0 limit has no bounded value; report it rather than
+        # returning the finite garbage np.where would leave behind
+        if np.any(lam < self.LAM_FLOOR):
+            raise ValueError(
+                "uGIMP second derivative diverges as lp -> 0 (got lp/dx below "
+                f"{self.LAM_FLOOR}); at zero domain width this is the linear "
+                "hat, whose second derivative is a singular measure."
+            )
+        return d2w
 
     def apic_inv_D(self, dx: float) -> float:
         # GIMP is not a quadratic B-spline, so D is not exactly (dx^2/4) I.

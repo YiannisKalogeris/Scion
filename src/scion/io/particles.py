@@ -33,6 +33,11 @@ def pad_to_3d(a: np.ndarray) -> np.ndarray:
     a = np.asarray(a)
     if a.ndim != 2 or a.shape[1] == 3:
         return a
+    if a.shape[1] > 3:
+        raise ValueError(
+            f"cannot pad a ({a.shape[0]}, {a.shape[1]}) array to 3 components; "
+            "VTK vectors have at most 3, so split this into scalar components"
+        )
     out = np.zeros((a.shape[0], 3), dtype=a.dtype)
     out[:, : a.shape[1]] = a
     return out
