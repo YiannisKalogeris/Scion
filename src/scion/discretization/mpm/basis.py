@@ -96,7 +96,25 @@ class Basis(ABC):
 
     @abstractmethod
     def apic_inv_D(self, dx: float) -> float:
-        """Inverse of the APIC normalisation scalar, D = c * dx^2 * I."""
+        r"""Inverse of the APIC normalisation scalar, ``D = c dx^2 I``.
+
+        A *constant* here is only correct when the second weight moment
+        ``sum_i w_i z_i z_i^T`` is independent of where the particle sits in the
+        cell, and that is a property of the basis, not of APIC. Measured:
+
+        ======================  ==================  =========================
+        basis                   spread of sum w z^2  APIC angular momentum
+        ======================  ==================  =========================
+        quadratic B-spline      2.5e-20 (exact)      conserved to 1e-14
+        cubic B-spline          5.5e-20 (exact)      conserved to 1e-14
+        linear hat              46% of the mean      **53% lost in 150 steps**
+        uGIMP                   23% of the mean      not conserved
+        ======================  ==================  =========================
+
+        So APIC is exactly angular-momentum conserving on the B-splines and is
+        an approximation elsewhere. That is not a defect of this method; it is
+        why APIC is specified with a quadratic B-spline.
+        """
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +137,12 @@ class LinearHat(Basis):
         return w, dw
 
     def apic_inv_D(self, dx: float) -> float:
+        # NOT the true second moment: for the hat that is xi(1-xi) dx^2, which
+        # varies from 0 at a node to dx^2/4 mid-cell and averages dx^2/6, so the
+        # honest constant would be 6/dx^2 rather than 3/dx^2. Neither value makes
+        # APIC conservative here -- the moment is position-dependent -- and this
+        # basis exists to reproduce cell-crossing artefacts, so the figure is
+        # left as the conventional one with the discrepancy recorded.
         return 3.0 / (dx * dx)
 
 

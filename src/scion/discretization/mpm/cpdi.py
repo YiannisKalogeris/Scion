@@ -127,7 +127,10 @@ class CPDIGrid(CartesianGrid):
         ids, ws, gws, dps, hss = [], [], [], [], []
         for c in range(4):
             corner = xp + offsets[:, c, :]
-            st = super().build_stencil(corner, lp=None, hessian=hessian)
+            # hessian=False deliberately: the CPDI second gradient below is
+            # built from grad_w at the corners, not from the basis hessian, so
+            # requesting one would refuse on a linear grid basis for no reason.
+            st = super().build_stencil(corner, lp=None, hessian=False)
             ids.append(st.node_id)
             ws.append(0.25 * st.w)
 
@@ -138,9 +141,16 @@ class CPDIGrid(CartesianGrid):
             dps.append(st.dpos + offsets[:, c, None, :])
 
             if hessian:
-                # differentiating Eq. 26 with respect to x_p: the coefficients
-                # are constant over the step, so only S is differentiated, and
-                # only to *first* order -- see the note in build_stencil
+                # Differentiating Eq. 26 with respect to x_p. The coefficients
+                # are constant over the step, so only S is differentiated -- and
+                # only to *first* order, because Eq. 26 already carries one
+                # derivative in the form of the boundary integral.
+                #
+                # The consequence is the asymmetry the paper predicts: CPDI's
+                # second material gradient is **bounded but discontinuous** even
+                # on a linear grid basis, where the raw hat's is a Dirac
+                # measure. It is not continuous, as a B-spline's is. So CPDI
+                # and BSMPM improve different terms of Eq. (9).
                 hss.append(np.einsum("pa,pkb->pkab", coef, st.grad_w))
 
         return StencilData(

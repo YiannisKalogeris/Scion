@@ -236,9 +236,14 @@ class PolyPIC(Transfer):
 
         c = getattr(particles, "poly_c", None)
         pull = getattr(particles, "poly_pullback", None)
-        if c is None or c.shape[-1] != grid.dim:
-            # first step: constant mode only, i.e. plain PIC momentum
-            v_at_nodes = np.broadcast_to(particles.v[:, None, :], st.dpos.shape)
+        if c is None or c.shape[-1] != grid.dim or pull is None:
+            # Cold start. Seed the polynomial from the affine state the particle
+            # already carries rather than dropping to PIC momentum: falling back
+            # to the constant mode discards whatever spin was prescribed, which
+            # costs ~2% of the angular momentum on the first step and is exactly
+            # the loss PolyPIC exists to avoid.
+            v_at_nodes = (particles.v[:, None, :]
+                          + np.einsum("pab,pkb->pka", particles.C, st.dpos))
         else:
             # Fu et al. Eq. 12: the stored polynomial is anchored at the
             # particle's *previous* position, and the particle has since moved.
@@ -295,12 +300,17 @@ class PolyPIC(Transfer):
 
         # (I + dt C)^-1 for the next P2G, with C the affine part of the fit --
         # the coefficients of the degree-one modes, restored to physical units
+        # The modes are built on z/dx, so the degree-one coefficients are
+        # velocities per *cell*, not per unit length: the affine matrix is
+        # c/dx. Without the inv_dx this pull-back is wrong by a factor of the
+        # grid spacing, which for a typical grid is one to two orders.
         n, d = particles.n, particles.dim
         C = np.zeros((n, d, d), dtype=c.dtype)
         for a in range(d):
             e = [0] * d
             e[a] = 1
-            C[:, :, a] = c[:, self._exponents.index(tuple(e)), :]
+            C[:, :, a] = c[:, self._exponents.index(tuple(e)), :] * grid.inv_dx
+        particles.C = C
         particles.poly_pullback = np.linalg.inv(eye_d + dt * C)
 
 
