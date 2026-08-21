@@ -12,11 +12,8 @@ it: the reference's printed Eq. 148 has ``n3`` where ``n1`` belongs, and the
 affine test passes either way.
 """
 
-import itertools
-
 import numpy as np
 import pytest
-from scipy import sparse
 
 from scion.discretization.mpm import (
     CartesianGrid,

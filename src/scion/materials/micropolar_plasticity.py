@@ -495,8 +495,8 @@ class MicropolarDruckerPrager:
         n = Ue.shape[0]
         eye = np.eye(3)
         l2 = self.l_p ** 2
-        tau, nu, S, Fe = work["tau"], work["nu"], work["S"], work["Fe"]
-        s, q, n_tau, n_nu = work["s"], work["q"], work["n_tau"], work["n_nu"]
+        tau, nu, S = work["tau"], work["nu"], work["S"]
+        s, q, n_nu = work["s"], work["q"], work["n_nu"]
         expX, dexp = work["expX"], work["dexp"]
         qs = self._q_floor(q)
 

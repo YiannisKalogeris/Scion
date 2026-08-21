@@ -442,7 +442,7 @@ class MicropolarMPMStepper:
         Unsymmetric in general, and that is not a bug: a rotation-parameterised
         tangent is symmetric only at equilibrium. Do not hand this to PCG.
         """
-        st, grid = self._st, self.grid
+        st = self._st
         nc = self.n_components
         c = self.constitutive(particles)
 

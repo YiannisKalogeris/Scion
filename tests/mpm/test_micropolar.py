@@ -363,7 +363,6 @@ class TestGhostStabilisation:
 # ======================================================================
 class TestSolve:
     def test_newton_is_quadratic(self):
-        nan = np.nan
         grid, parts = block(hi=(2.5, 1.5, 1.5), shape=(8, 6, 6))
         bcs = [GridDirichlet(lambda c: c[:, 0] < 0.5 + 1e-9, np.zeros(6)),
                GridDirichlet(lambda c: c[:, 0] > 2.5 - 1e-9,
@@ -629,19 +628,16 @@ class TestElastoplastic:
         heterogeneous strength too, but every particle there is plastic inside a
         single chunk, which made the full array match the subset by coincidence.
         """
-        n_pts = None
-        material = None
-        stepper, parts = self.body(
-            MicropolarDruckerPrager(
-                self.ELASTIC, cohesion=6.0e7, friction=8.6, dilation=2.0,
-                plastic_length=0.005), kick=0.004)
-        # rebuild with a heterogeneous strength on the same particle layout
-        coh = np.full(parts.n, 6.0e7)
-        coh[:parts.n // 3] *= 0.85
+        # the particle count is fixed by ``body``; build the strength array
+        # against it directly rather than by making a throwaway stepper first
+        n_pts = 96
+        coh = np.full(n_pts, 6.0e7)
+        coh[:n_pts // 3] *= 0.85
         stepper, parts = self.body(
             MicropolarDruckerPrager(self.ELASTIC, cohesion=coh, friction=8.6,
                                     dilation=2.0, plastic_length=0.005),
             kick=0.004)
+        assert parts.n == n_pts
         plastic = stepper.constitutive(parts)["state"]["plastic"]
         assert plastic.any() and not plastic.all()
         report = check_tangent(lambda u: stepper.residual_at(parts, u),

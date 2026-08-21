@@ -381,7 +381,6 @@ class TestAlgorithmicJacobian:
     def test_T_against_finite_differences(self):
         m = model(friction=8.6, dilation=2.0, hardening=2.0e8)
         Q, F, Fe_tr, Gam_tr, chi_old, Ue, Gam_e, chi, dg = self.state(m)
-        n = Q.shape[0]
         _, _, _, _, work = m.residuals(Q, F, Fe_tr, Gam_tr, chi_old,
                                        Ue, Gam_e, chi, dg)
         T = m.auxiliary_jacobian(Q, F, Fe_tr, Ue, Gam_e, dg, work)
@@ -513,17 +512,16 @@ def test_the_local_jacobian_is_singular_at_an_unstressed_non_dilatant_point():
     """
     elastic = MicropolarHooke.from_technical(
         E=2.5 * 8.0e6, nu=0.25, N=0.3015, l_t=0.004, l_b=0.002, psi=1.5)
-    n = 1
-    eye = np.broadcast_to(np.eye(3), (n, 3, 3)).copy()
-    zero = np.zeros((n, 3, 3))
+    eye = np.broadcast_to(np.eye(3), (1, 3, 3)).copy()
+    zero = np.zeros((1, 3, 3))
 
     def condition(dilation, hardening, Ue, Gam):
         m = MicropolarDruckerPrager(elastic, cohesion=100.0e3, friction=30.0,
                                     dilation=dilation, hardening=hardening,
                                     plastic_length=0.002)
-        _, _, _, _, work = m.residuals(eye, eye, Ue, Gam, np.zeros(n), Ue, Gam,
-                                       np.zeros(n), np.zeros(n))
-        C = m.jacobian(eye, eye, Ue, Ue, Gam, np.zeros(n), work)
+        _, _, _, _, work = m.residuals(eye, eye, Ue, Gam, np.zeros(1), Ue, Gam,
+                                       np.zeros(1), np.zeros(1))
+        C = m.jacobian(eye, eye, Ue, Ue, Gam, np.zeros(1), work)
         return np.linalg.cond(C)[0]
 
     # all three conditions together: singular
