@@ -16,6 +16,7 @@ Layered so a failure localises:
 
 import numpy as np
 import pytest
+from numpy.testing import assert_allclose
 from scipy.linalg import expm
 
 from scion.core.rotation import quat_from_rotvec, quat_to_matrix
@@ -263,19 +264,94 @@ class TestReturnMap:
         with pytest.raises(ValueError, match="generate energy"):
             model(friction=10.0, dilation=20.0)
 
-    def test_a_trial_state_past_the_apex_names_the_apex(self):
-        """Beyond ``p = k/alpha_DP`` the smooth cone has no admissible return.
-        The error must say so: the remedy is a smaller load step, and more
-        iterations will never help."""
+    def test_a_trial_state_past_the_apex_returns_to_the_tip(self):
+        """Beyond ``p = k/alpha_DP`` the smooth cone has no admissible return,
+        so the point takes the apex branch instead. The tip is where ``q = 0``
+        and ``f = 0`` meet, and both must hold *exactly* -- this is a closed
+        form, not an iteration to a tolerance on the 20-unknown problem."""
         m = model(friction=8.6, dilation=2.0)
+        n = 3
+        Q = np.broadcast_to(np.eye(3), (n, 3, 3)).copy()
+        F = np.stack([np.eye(3) * f for f in (1.05, 1.10, 1.20)])
+        Fe_tr = F.copy()
+        out = m.return_map(Q, F, Fe_tr, np.zeros((n, 3, 3)), np.zeros(n))
+
+        assert out["apex"].all() and out["plastic"].all()
+        p_, s_, q_ = m.invariants(out["tau"], out["nu"])
+        assert np.abs(q_).max() == 0.0            # exactly, not to a tolerance
+        assert np.abs(s_).max() == 0.0
+        assert np.abs(out["Gam_e"]).max() == 0.0
+        assert_allclose(p_, m.apex_pressure(out["chi"]), rtol=1e-12)
+        assert_allclose(m.yield_function(p_, q_, out["chi"]) / m.k,
+                        np.zeros(n), atol=1e-12)
+        # a genuine return: the multiplier is positive and grows with how far
+        # past the tip the trial state sat
+        assert (out["dgamma"] > 0).all()
+        assert np.all(np.diff(out["dgamma"]) > 0)
+
+    def test_the_apex_return_conserves_the_volumetric_flow(self):
+        """``det U^e = exp(-dgamma beta_DP) det (F^e)^tr`` -- the exponential
+        map's volumetric part in closed form. It holds because
+        ``tr(dg/dtau) = beta_DP`` identically, which is the fact that collapses
+        the apex problem from 20 unknowns to two scalars."""
+        m = model(friction=8.6, dilation=2.0)
+        Fe_tr = np.stack([np.diag([1.08, 1.06, 1.05]),
+                          np.diag([1.20, 1.15, 1.10])])
+        out = m.apex_return(Fe_tr, np.zeros(2))
+        assert_allclose(np.linalg.det(out["Ue"]),
+                        np.exp(-out["dgamma"] * m.beta_dp)
+                        * np.linalg.det(Fe_tr), rtol=1e-12)
+
+    def test_zero_dilatancy_past_the_apex_is_still_refused(self):
+        """The standing refusal, and it is structural rather than a gap. With
+        ``beta_DP = 0`` the flow is purely deviatoric, so it can produce no
+        volume change, so nothing can carry the pressure back to the tip. The
+        two-equation system loses ``dgamma`` from its second row entirely."""
+        m = model(friction=8.6, dilation=0.0)
         n = 1
         Q = np.broadcast_to(np.eye(3), (n, 3, 3)).copy()
-        F = np.broadcast_to(np.eye(3), (n, 3, 3)).copy()
-        # a large hydrostatic tension: pressure far beyond the cone tip
         Fe_tr = np.broadcast_to(np.eye(3) * 1.10, (n, 3, 3)).copy()
-        with pytest.raises(RuntimeError, match="apex"):
-            m.return_map(Q, F, Fe_tr, np.zeros((n, 3, 3)), np.zeros(n),
-                         max_iter=40)
+        with pytest.raises(ValueError, match="zero dilatancy"):
+            m.return_map(Q, np.broadcast_to(np.eye(3), (n, 3, 3)).copy(),
+                         Fe_tr, np.zeros((n, 3, 3)), np.zeros(n))
+
+    def test_the_apex_tangent_matches_finite_differences(self):
+        """``dU^e/d(F^e)^tr`` and ``ddgamma/d(F^e)^tr`` against central
+        differences on the apex map itself.
+
+        The ``H = 0`` row is the interesting one: ``du`` carries a factor of
+        ``H``, so a perfectly plastic apex point's elastic stretch does not
+        depend on the trial state at all and the whole ``U^e`` block is
+        *identically* zero. The stress is pinned at the tip, so any further
+        deformation is pure plastic flow and the point contributes no
+        stiffness. Asserted as an exact zero, since it is one.
+        """
+        for H in (0.0, 2.0e6):
+            m = model(friction=8.6, dilation=2.0, hardening=H)
+            Fe_tr = np.array([[[1.09, 0.01, 0.0],
+                               [0.0, 1.07, 0.02],
+                               [0.01, 0.0, 1.05]]])
+            chi0 = np.array([0.013])
+            out = m.apex_return(Fe_tr, chi0)
+            P = m.apex_jacobian(Fe_tr, out["Ue"])
+            fe = m.input_slices["Fe_tr"]
+
+            for i in range(3):
+                for j in range(3):
+                    h = 1.0e-7 * max(abs(Fe_tr[0, i, j]), 1.0)
+                    up, dn = Fe_tr.copy(), Fe_tr.copy()
+                    up[0, i, j] += h
+                    dn[0, i, j] -= h
+                    a1, a2 = m.apex_return(up, chi0), m.apex_return(dn, chi0)
+                    col = fe.start + 3 * i + j
+                    assert_allclose(P[0, :9, col].reshape(3, 3),
+                                    (a1["Ue"] - a2["Ue"])[0] / (2 * h),
+                                    atol=1e-8 * max(H / 2.0e6, 1.0e-8))
+                    assert_allclose(P[0, 19, col],
+                                    (a1["dgamma"] - a2["dgamma"])[0] / (2 * h),
+                                    rtol=1e-6, atol=1e-7)
+            if H == 0.0:
+                assert np.abs(P[0, :9, :]).max() == 0.0
 
     def test_couple_stress_alone_can_yield(self):
         """The yield surface genuinely mixes the two: a state with no stress

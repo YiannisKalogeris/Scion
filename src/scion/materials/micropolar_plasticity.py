@@ -144,17 +144,21 @@ class MicropolarDruckerPrager:
         reference's ad hoc ``l_b = l_p``; it is a *separate* physical parameter
         and the equality is a convenience, not a result.
 
-    Known limit: the apex
-    ---------------------
+    The apex
+    --------
     A trial state whose pressure exceeds ``k / alpha_DP`` sits beyond the tip of
-    the Drucker-Prager cone, where the smooth surface has **no admissible
-    return** -- the flow direction points away from every point of the surface.
-    Measured on random trial states at 119 times the yield limit: exactly the
-    one point past the apex fails and all 39 others converge. The return map
-    names the apex in its error rather than reporting generic non-convergence,
-    because the remedy is a smaller load step or an apex return, not more
-    iterations. This is the same refusal the classical Drucker-Prager in
-    ``materials/plasticity/`` already carries.
+    the cone, where the smooth surface has **no admissible return** -- the flow
+    direction points away from every point of it. Those points are split off
+    before Newton and handled by :meth:`apex_return`, which is a two-scalar
+    problem rather than the 20-unknown one.
+
+    The detection is *not* ``p_trial > k/alpha_DP``, which is necessary and not
+    sufficient: such a state can still return smoothly if it carries enough
+    deviatoric stress, since dilatancy drags ``p`` back down onto the cone at
+    ``q > 0``. The apex return's own multiplier decides -- a negative
+    ``dgamma`` sends the point back to the smooth branch.
+
+    Still refused at ``beta_DP = 0``: see :meth:`apex_return`.
 
     Away from the apex the basin is wide: measured, trial states at **35 to 90
     times** the yield limit still return, which is far beyond any load step a
@@ -364,9 +368,40 @@ class MicropolarDruckerPrager:
         if not plastic.any():
             return dict(Ue=Ue, Gam_e=Gam_e, chi=chi, dgamma=dg,
                         tau=work["tau"], nu=work["nu"], plastic=plastic,
-                        iterations=0, converged=True)
+                        apex=np.zeros(n, dtype=bool), iterations=0,
+                        converged=True)
 
-        idx = np.flatnonzero(plastic)
+        # Points whose *trial* pressure is already past the tip are split off
+        # before Newton rather than after it fails. They cannot converge on the
+        # smooth surface, and left in the batch they hold the whole chunk at
+        # ``max_iter`` -- the loop breaks only when every point has converged.
+        apex = np.zeros(n, dtype=bool)
+        if self.alpha_dp > 0.0:
+            # A trial pressure past the tip is *necessary* for the apex branch
+            # and not sufficient: such a state can still return smoothly if it
+            # carries enough deviatoric stress, because dilatancy drags ``p``
+            # back down and it lands on the cone at ``q > 0``. The apex return's
+            # own multiplier is the test -- ``dgamma < 0`` means the tip lies
+            # behind the trial state along the flow path, so the smooth surface
+            # is reachable and this point is not an apex case.
+            cand = plastic & (work["p"] > self.apex_pressure(chi_old, k_all))
+            if cand.any():
+                ic = np.flatnonzero(cand)
+                ap = self.apex_return(Fe_tr[ic], chi_old[ic], k_all[ic])
+                take = ap["admissible"]
+                ia = ic[take]
+                apex[ia] = True
+                Ue[ia], Gam_e[ia] = ap["Ue"][take], ap["Gam_e"][take]
+                chi[ia], dg[ia] = ap["chi"][take], ap["dgamma"][take]
+
+        smooth = plastic & ~apex
+        if not smooth.any():
+            tau, nu, *_ = self.stresses(Q, F, Ue, Gam_e)
+            return dict(Ue=Ue, Gam_e=Gam_e, chi=chi, dgamma=dg, tau=tau,
+                        nu=nu, plastic=plastic, apex=apex, iterations=0,
+                        converged=True)
+
+        idx = np.flatnonzero(smooth)
         Qa, Fa, Fea, Ga, ca = (Q[idx], F[idx], Fe_tr[idx], Gam_tr[idx],
                                chi_old[idx])
         Ua, Gea, cha, dga = Ue[idx], Gam_e[idx], chi[idx], dg[idx]
@@ -449,7 +484,137 @@ class MicropolarDruckerPrager:
         Ue[idx], Gam_e[idx], chi[idx], dg[idx] = Ua, Gea, cha, dga
         tau, nu, *_ = self.stresses(Q, F, Ue, Gam_e)
         return dict(Ue=Ue, Gam_e=Gam_e, chi=chi, dgamma=dg, tau=tau, nu=nu,
-                    plastic=plastic, iterations=iterations, converged=True)
+                    plastic=plastic, apex=apex, iterations=iterations,
+                    converged=True)
+
+    # ------------------------------------------------------------------
+    # the apex
+    # ------------------------------------------------------------------
+    def apex_pressure(self, chi, k=None):
+        """Pressure at the cone tip, where ``q = 0`` and ``f = 0`` meet."""
+        kk = self.k if k is None else k
+        return (kk + self.H * chi) / self.alpha_dp
+
+    def apex_return(self, Fe_tr, chi_old, k=None,
+                    tol: float = 1.0e-12, max_iter: int = 30):
+        r"""Return a trial state to the tip of the cone.
+
+        The smooth surface has no admissible return beyond the tip -- the flow
+        direction points away from every point of it -- so a separate branch is
+        the only option, and it collapses to **two scalar equations** rather
+        than the 20-unknown local problem. Two structural facts do the
+        collapsing, both verified to the bit rather than assumed:
+
+        - ``q = 0`` forces ``nu = 0``, hence ``Gamma^e = 0``, and forces ``tau``
+          spherical, which for an isotropic ``D`` means ``U^e = u I``. A
+          spherical ``U^e`` with zero wryness gives ``q = 0`` and ``|s| = 0``
+          exactly, at every ``u``, so the apex state is representable in the
+          ordinary unknowns and needs no special-casing downstream.
+        - ``tr(dg/dtau) = beta_DP`` identically, so the exponential map's
+          volumetric part integrates in closed form.
+
+        Leaving
+
+            (c0/3) u (u - 1) = (k + H (chi_old + dgamma)) / alpha_DP
+            3 ln u + dgamma beta_DP = ln det (F^e)^tr
+
+        for ``(u, dgamma)``, where ``c0 = tr(D : I)``. Note ``p`` is *quadratic*
+        in ``u``, not linear -- ``tau = Q B (U^e)^T`` carries a second factor of
+        ``u`` -- which is why this is a Newton solve and not a division.
+
+        Refusal preserved
+        -----------------
+        At ``beta_DP = 0`` the second equation loses ``dgamma`` entirely, so
+        with ``H = 0`` the 2x2 system is singular and nothing can move ``p``
+        back to the tip. That is the standing "Drucker-Prager with zero
+        dilatancy beyond the apex" refusal, and it is **structural**: a purely
+        deviatoric flow rule cannot produce the volumetric strain the return
+        requires. This branch raises rather than approximating it.
+        """
+        if self.alpha_dp <= 0.0:
+            raise ValueError(
+                "the apex return needs alpha_DP > 0: a von Mises cylinder has "
+                "no tip to return to")
+        if self.beta_dp <= 0.0 and self.H == 0.0:
+            raise ValueError(
+                "Drucker-Prager with zero dilatancy has no admissible return "
+                "beyond the apex: the flow rule is purely deviatoric, so no "
+                "plastic volume change is available to bring the pressure back "
+                "to the tip. Give the material a dilation angle or hardening")
+
+        Fe_tr = np.asarray(Fe_tr, dtype=float)
+        n = Fe_tr.shape[0]
+        kk = np.broadcast_to(np.asarray(self.k if k is None else k,
+                                        dtype=float), (n,)).astype(float)
+        chi_old = np.broadcast_to(np.asarray(chi_old, dtype=float),
+                                  (n,)).astype(float)
+
+        c3 = float(np.einsum("aagg->", self._D)) / 3.0
+        lnJ = np.log(np.maximum(np.linalg.det(Fe_tr), 1.0e-300))
+
+        u = np.exp(lnJ / 3.0)          # the purely volumetric trial stretch
+        dgam = np.zeros(n)
+        converged = False
+        for _ in range(max_iter):
+            r1 = c3 * u * (u - 1.0) - (kk + self.H * (chi_old + dgam)) / self.alpha_dp
+            r2 = 3.0 * np.log(u) + dgam * self.beta_dp - lnJ
+            if (np.abs(r1) <= tol * kk).all() and (np.abs(r2) <= tol).all():
+                converged = True
+                break
+            a = c3 * (2.0 * u - 1.0)
+            b = -self.H / self.alpha_dp
+            c = 3.0 / u
+            d = self.beta_dp
+            det = a * d - b * c
+            u = u + (-d * r1 + b * r2) / det
+            dgam = dgam + (c * r1 - a * r2) / det
+            u = np.maximum(u, 1.0e-8)   # the log needs a positive stretch
+
+        Ue = u[:, None, None] * np.eye(3)
+        return dict(Ue=Ue, Gam_e=np.zeros((n, 3, 3)), chi=chi_old + dgam,
+                    dgamma=dgam, u=u, converged=converged,
+                    admissible=converged & (dgam >= 0.0))
+
+    def apex_jacobian(self, Fe_tr, Ue):
+        """``P`` for points sitting at the apex, ``(n, 20, 37)``.
+
+        Cheap, because the two scalar equations see only ``ln det (F^e)^tr``
+        and ``chi_old``: every other input column is identically zero.
+
+        The consequence worth stating is the perfectly plastic one. ``du``
+        carries a factor of ``H``, so at ``H = 0`` an apex point's ``U^e`` does
+        not depend on the trial state at all and the whole ``U^e`` block
+        vanishes -- the stress is pinned at the tip and any further deformation
+        is pure plastic flow, so the point contributes **no stiffness**. That is
+        the physics, not a degenerate tangent.
+        """
+        Fe_tr = np.asarray(Fe_tr, dtype=float)
+        n = Fe_tr.shape[0]
+        P = np.zeros((n, self.n_unknowns, self.n_inputs))
+        u = Ue[:, 0, 0]
+
+        c3 = float(np.einsum("aagg->", self._D)) / 3.0
+        a = c3 * (2.0 * u - 1.0)
+        b = -self.H / self.alpha_dp
+        c = 3.0 / u
+        d = self.beta_dp
+        det = a * d - b * c
+
+        inv_FeT = np.transpose(np.linalg.inv(Fe_tr), (0, 2, 1))
+        du_dFe = (-b / det)[:, None, None] * inv_FeT
+        dg_dFe = (a / det)[:, None, None] * inv_FeT
+        du_dchi = (d / det) * (self.H / self.alpha_dp)
+        dg_dchi = (-c / det) * (self.H / self.alpha_dp)
+
+        fe, ch = self.input_slices["Fe_tr"], self.input_slices["chi_old"]
+        for i in (0, 4, 8):                      # U^e = u I: the diagonal only
+            P[:, i, fe] = du_dFe.reshape(n, 9)
+            P[:, i, ch.start] = du_dchi
+        P[:, 18, fe] = dg_dFe.reshape(n, 9)      # chi = chi_old + dgamma
+        P[:, 18, ch.start] = 1.0 + dg_dchi
+        P[:, 19, fe] = dg_dFe.reshape(n, 9)
+        P[:, 19, ch.start] = dg_dchi
+        return P
 
     # ------------------------------------------------------------------
     # the algorithmically consistent linearisation

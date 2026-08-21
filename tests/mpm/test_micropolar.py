@@ -19,6 +19,7 @@ Verification is layered so that a failure localises:
 """
 
 import numpy as np
+from numpy.testing import assert_allclose
 import pytest
 from scipy.spatial.transform import Rotation
 
@@ -531,7 +532,11 @@ class TestElastoplastic:
     ELASTIC = MicropolarHooke(lam=4.0e9, mu=4.0e9, a=0.1, alpha=0.0, beta=0.0,
                               gam=4.0e9 * 4.0 * 0.005 ** 2)
 
-    def body(self, material, kick=0.01, plastic=True, seed=3):
+    def body(self, material, kick=0.01, plastic=True, seed=3, expand=0.0):
+        """``expand`` superposes a dilatation graded along x on the random
+        kick. A uniform one is no use for reaching the apex selectively -- it
+        sends *every* point past the tip at once -- and the whole point of the
+        apex tests is a state carrying all three branches together."""
         from scion.discretization.mpm.micropolar import attach_micropolar_state
         dx = 0.5
         sub = dx / 2
@@ -545,9 +550,15 @@ class TestElastoplastic:
         stepper = MicropolarMPMStepper(grid, material)
         stepper.prepare(parts)
         rng = np.random.default_rng(seed)
+        coords = np.asarray(grid.node_coordinates()).reshape(-1, 3)
+        span = coords[:, 0].max() - coords[:, 0].min()
+        ramp = (coords[:, 0] - coords[:, 0].min()) / span
         for _ in range(2):
             k = np.zeros(stepper._n_dof)
             k[stepper._free] = kick * rng.standard_normal(stepper._free.size)
+            if expand:
+                for d in range(3):
+                    k[d::6] += expand * coords[:, d] * ramp
             stepper.apply_increment(parts, k)
         return stepper, parts
 
@@ -644,6 +655,55 @@ class TestElastoplastic:
                                lambda u: stepper.tangent_at(parts, u),
                                np.zeros(stepper._n_dof), free=stepper._free)
         assert report.passed, report
+
+    def test_global_tangent_with_apex_points(self):
+        """The apex branch wired all the way through the stepper.
+
+        Apex points need their *own* linearisation: ``P = -C^-1 T`` carries the
+        smooth surface's yield row, and an apex point's constraint is the tip,
+        not ``f = 0`` along the cone. This state holds all three branches at
+        once -- 4 apex, 91 smooth-plastic, 1 elastic -- which is what makes it
+        a test of the dispatch and not just of one path. Measured 1.9e-8;
+        replacing the apex tangent with the smooth one fails it at 6.2e-4.
+        """
+        material = MicropolarDruckerPrager(
+            self.ELASTIC, cohesion=6.0e7, friction=8.6, dilation=2.0,
+            plastic_length=0.005)
+        stepper, parts = self.body(material, kick=0.004, expand=0.010)
+        state = stepper.constitutive(parts)["state"]
+        apex, plastic = state["apex"], state["plastic"]
+        # without all three present this test does not test the dispatch
+        assert apex.any()
+        assert (plastic & ~apex).any()
+        assert (~plastic).any()
+
+        report = check_tangent(lambda u: stepper.residual_at(parts, u),
+                               lambda u: stepper.tangent_at(parts, u),
+                               np.zeros(stepper._n_dof), free=stepper._free)
+        assert report.passed, report
+
+    def test_a_body_driven_entirely_past_the_apex_still_solves(self):
+        """Every point at the tip. This is the configuration that used to raise
+        -- it is what stalls two of the three biaxial dilatancy cases, where a
+        dilating band with no confining pressure drives local tension past the
+        cone. All points must land exactly on the tip."""
+        material = MicropolarDruckerPrager(
+            self.ELASTIC, cohesion=6.0e6, friction=8.6, dilation=2.0,
+            plastic_length=0.005)
+        stepper, parts = self.body(material, kick=0.004, expand=0.030)
+        state = stepper.constitutive(parts)["state"]
+        assert state["apex"].all()
+        p_, s_, q_ = material.invariants(state["tau"], state["nu"])
+        # ``q = 0`` is exact in the return map itself, where the deviator is
+        # built from a spherical ``U^e``. Through the stepper it survives only
+        # as far as ``Q``'s orthogonality: ``tau = b u Q Q^T``, and a
+        # quaternion-derived ``Q`` is orthogonal to a few ulp. Measured 7.8e-16
+        # relative, so the bound below is four orders of slack, not a fudge.
+        scale = np.abs(p_).max()
+        assert np.abs(q_).max() < 1e-12 * scale
+        assert np.abs(s_).max() < 1e-12 * scale
+        assert np.abs(state["nu"]).max() == 0.0      # this one *is* exact
+        assert_allclose(p_, material.apex_pressure(state["chi"]), rtol=1e-12)
 
     def test_history_advances_only_on_a_committed_step(self):
         """``F^p``, ``Gamma^p`` and ``chi`` must not move during a Newton

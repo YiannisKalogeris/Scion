@@ -16,7 +16,15 @@ import pytest
 
 from scion.core import small_linalg as sla
 from scion.discretization.mpm import CartesianGrid
+from scion.core.rotation import quat_from_rotvec, quat_to_matrix
+from scion.materials.micropolar import MicropolarHooke
+from scion.materials.hyperelastic_batched import (
+    NeoHookeanCompressible,
+    TransverselyIsotropic,
+)
 from scion.materials.eshelby import (
+    configurational_torque,
+    micropolar_eshelby_stress,
     eshelby_stress,
     eshelby_stress_small_strain,
     j_integral,
@@ -473,3 +481,247 @@ class TestJIntegral:
         n = R.size
         zero = np.zeros((n, 2, 2))
         assert np.allclose(j_integral(zero, area, gq), 0.0)
+
+
+# ======================================================================
+# the configurational torque
+# ======================================================================
+class TestConfigurationalTorque:
+    """``skew(Sigma)``: what drives material structure to *rotate*, as opposed
+    to the material force, which drives a defect to translate.
+
+    Verified on a transversely isotropic solid, which is the cheapest material
+    that has a nonzero one -- no Cosserat machinery, no couple stress -- and
+    which comes with an exact zero to check against on the isotropic side.
+    """
+
+    ANISO = TransverselyIsotropic.from_E_nu(1000.0, 0.30, k_fibre=500.0,
+                                            fibre=[1.0, 0.0, 0.0])
+
+    @staticmethod
+    def deformations(n=200, seed=1, amp=0.25):
+        rng = np.random.default_rng(seed)
+        F = np.eye(3)[None] + amp * rng.standard_normal((n, 3, 3))
+        return F[np.linalg.det(F) > 0.2]
+
+    def torque(self, material, F, with_energy=True):
+        P, _ = material.pk1(F)
+        W = material.energy(F) if with_energy else np.zeros(len(F))
+        return configurational_torque(eshelby_stress(W, F, P))
+
+    @pytest.mark.parametrize("material", [
+        NeoHookeanCompressible.from_E_nu(1000.0, 0.30),
+        TransverselyIsotropic.from_E_nu(1000.0, 0.30, 0.0, [1.0, 0.0, 0.0]),
+    ])
+    def test_isotropy_gives_an_exact_zero(self, material):
+        """``F^T P = C S`` with ``S`` an isotropic function of ``C``, so the two
+        are coaxial, their product is symmetric, and the skew part vanishes at
+        **every** ``F``. Not a small effect -- a nonzero reading on an isotropic
+        material is a bug."""
+        F = self.deformations()
+        t = self.torque(material, F)
+        P, _ = material.pk1(F)
+        scale = np.abs(eshelby_stress(material.energy(F), F, P)).max()
+        assert np.abs(t).max() < 1e-12 * scale
+
+    def test_anisotropy_gives_a_nonzero_one(self):
+        F = self.deformations()
+        P, _ = self.ANISO.pk1(F)
+        scale = np.abs(eshelby_stress(self.ANISO.energy(F), F, P)).max()
+        assert np.abs(self.torque(self.ANISO, F)).max() > 1e-3 * scale
+
+    def test_the_energy_term_cancels_exactly(self):
+        """``Sigma`` carries ``W`` on its diagonal and a spherical tensor has no
+        antisymmetric part, so ``skew(Sigma) = -skew(F^T P)`` identically.
+
+        This is why the torque does *not* inherit the near-total cancellation
+        that forces ``eshelby_stress_small_strain`` to exist: near a crack tip
+        ``sigma`` is ~1e5 times ``J`` and the material force is a difference of
+        two huge nearly-equal terms. The large term is not in this quantity at
+        all.
+        """
+        F = self.deformations()
+        with_W = self.torque(self.ANISO, F, with_energy=True)
+        without = self.torque(self.ANISO, F, with_energy=False)
+        assert np.abs(with_W - without).max() == 0.0
+
+        P, _ = self.ANISO.pk1(F)
+        FtP = np.einsum("pij,pik->pjk", F, P)
+        direct = -0.5 * np.stack([FtP[:, 2, 1] - FtP[:, 1, 2],
+                                  FtP[:, 0, 2] - FtP[:, 2, 0],
+                                  FtP[:, 1, 0] - FtP[:, 0, 1]], axis=1)
+        assert np.abs(with_W - direct).max() == 0.0
+
+    def test_invariant_under_a_superposed_spatial_rotation(self):
+        """``Sigma`` is *invariant* rather than conjugated -- a spatial stress
+        would conjugate -- so its axial vector is invariant too."""
+        F = self.deformations(n=50)
+        R = quat_to_matrix(quat_from_rotvec(
+            np.tile([0.4, -0.9, 0.3], (len(F), 1))))
+        rotated = self.torque(self.ANISO, np.einsum("pij,pjk->pik", R, F))
+        base = self.torque(self.ANISO, F)
+        assert np.abs(rotated - base).max() < 1e-12 * np.abs(base).max()
+
+    @staticmethod
+    def _rotated_stretch(theta, stretch=(1.3, 0.9, 0.9)):
+        c, s = np.cos(theta), np.sin(theta)
+        Rz = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+        return (Rz @ np.diag(stretch) @ Rz.T)[None]
+
+    def test_vanishes_when_the_stretch_aligns_with_the_fibre(self):
+        for theta in (0.0, np.pi / 2, np.pi):
+            F = self._rotated_stretch(theta)
+            assert np.abs(self.torque(self.ANISO, F)).max() < 1e-10
+
+    def test_acts_only_about_the_axis_of_misalignment(self):
+        """A stretch rotated about ``z`` away from a fibre lying in the x-y
+        plane can only drive rotation about ``z``. The other two components are
+        exactly zero, which pins the index convention of the axial vector."""
+        F = np.concatenate([self._rotated_stretch(t)
+                            for t in np.radians([15, 30, 45, 60, 75])])
+        t = self.torque(self.ANISO, F)
+        assert np.abs(t[:, :2]).max() == 0.0
+        assert np.abs(t[:, 2]).max() > 1.0
+
+    def test_it_is_minus_half_the_energy_gradient_in_material_orientation(self):
+        """The identity that says what this quantity *is*:
+
+            tau = -1/2 dW/d(material orientation)
+
+        Rotate the **fibre** with the deformation held fixed, and the torque is
+        exactly minus one half the resulting energy gradient -- the one half
+        being the axial-vector convention. Measured to four decimals at eight
+        orientations.
+
+        So the configurational torque is the energetic driving force for
+        reorienting the material's own structure, which is the rotational
+        counterpart of a material force driving a defect to translate. It is
+        also what makes the sign convention checkable rather than asserted.
+        """
+        F = np.diag([1.3, 0.9, 0.9])[None]
+
+        def torque_and_energy(alpha):
+            m = TransverselyIsotropic.from_E_nu(
+                1000.0, 0.30, 500.0,
+                [np.cos(alpha), np.sin(alpha), 0.0])
+            P, _ = m.pk1(F)
+            tau = configurational_torque(eshelby_stress(m.energy(F), F, P))
+            return float(tau[0, 2]), float(m.energy(F)[0])
+
+        h = 1e-5
+        for alpha in np.radians([10, 25, 40, 55, 70, 85, 110, 145]):
+            tau = torque_and_energy(alpha)[0]
+            dW = (torque_and_energy(alpha + h)[1]
+                  - torque_and_energy(alpha - h)[1]) / (2 * h)
+            assert abs(tau - (-0.5 * dW)) < 1e-4 * max(abs(tau), 1.0)
+
+    def test_two_dimensional_returns_a_scalar(self):
+        """A skew tensor in 2-D has one component, so the torque is a scalar
+        rather than a vector; returning a length-1 axial vector would invite it
+        to be indexed as if it were 3-D."""
+        F = np.eye(2)[None] + 0.1 * np.random.default_rng(0).standard_normal((4, 2, 2))
+        material = NeoHookeanCompressible.from_E_nu(1000.0, 0.30)
+        P, _ = material.pk1(F)
+        t = configurational_torque(eshelby_stress(material.energy(F), F, P))
+        assert t.shape == (4,)
+        assert np.abs(t).max() < 1e-12 * np.abs(P).max()
+
+
+# ======================================================================
+# the micropolar Eshelby stress
+# ======================================================================
+class TestMicropolarEshelby:
+    """``Sigma_KL = W d_KL - F_iK P_iL - Gamma_gK S_gL``.
+
+    Derived from Noether for material translations rather than transcribed. The
+    microrotation enters through ``dQ/dX``, and the bracket that falls out *is*
+    ``Gamma`` by its own definition -- so the couple slot is ``Gamma^T S`` and
+    nothing else. The reference writes it as ``phi_i,K M_iL``, the same object
+    reached through the gradient of the rotation *vector*, which needs the
+    tangent map ``H`` and inherits the ``H`` versus ``H^T`` question recorded in
+    ``core/rotation.py``. Working in ``Gamma`` and ``S`` avoids it.
+    """
+
+    ELASTIC = MicropolarHooke.from_technical(E=1000.0, nu=0.25, N=0.4,
+                                             l_t=0.30, l_b=0.15, psi=1.2)
+
+    def state(self, n=60, seed=2, wryness=0.5):
+        rng = np.random.default_rng(seed)
+        Q = quat_to_matrix(quat_from_rotvec(0.4 * rng.standard_normal((n, 3))))
+        F = np.eye(3) + 0.2 * rng.standard_normal((n, 3, 3))
+        Gam = wryness * rng.standard_normal((n, 3, 3))
+        return Q, F, Gam
+
+    def build(self, Q, F, Gam):
+        E = np.einsum("pji,pjk->pik", Q, F) - np.eye(3)
+        B, S = self.ELASTIC.stresses(E, Gam)
+        P = np.einsum("pia,pab->pib", Q, B)          # P = dW/dF is Q B
+        W = self.ELASTIC.energy(E, Gam)
+        return micropolar_eshelby_stress(W, F, P, Gam, S), P, W, S
+
+    def test_reduces_to_the_classical_form_without_wryness(self):
+        Q, F, _ = self.state()
+        zero = np.zeros_like(F)
+        Sigma, P, W, _ = self.build(Q, F, zero)
+        assert np.abs(Sigma - eshelby_stress(W, F, P)).max() == 0.0
+
+    def test_the_first_piola_stress_is_dW_dF(self):
+        """``P`` must be ``dW/dF`` for the *same* ``W``. Here that is ``P = Q B``
+        -- using ``J sigma F^-T``, the correct Cauchy-to-Piola relation but for
+        a different constitutive statement, converges cleanly to the wrong
+        answer, which is already recorded as a trap for the classical case."""
+        Q, F, Gam = self.state(n=20)
+        _, P, _, _ = self.build(Q, F, Gam)
+        h = 1e-6
+        num = np.zeros_like(P)
+        for i in range(3):
+            for L in range(3):
+                up, dn = F.copy(), F.copy()
+                up[:, i, L] += h
+                dn[:, i, L] -= h
+                Eu = np.einsum("pji,pjk->pik", Q, up) - np.eye(3)
+                Ed = np.einsum("pji,pjk->pik", Q, dn) - np.eye(3)
+                num[:, i, L] = (self.ELASTIC.energy(Eu, Gam)
+                                - self.ELASTIC.energy(Ed, Gam)) / (2 * h)
+        assert np.abs(P - num).max() < 1e-8 * np.abs(P).max()
+
+    def test_invariant_under_a_superposed_spatial_rotation(self):
+        """``F -> RF`` and ``Q -> RQ`` together. ``E``, ``Gamma``, ``B`` and
+        ``S`` are material-frame and unaffected, and the ``R`` in ``P = Q B``
+        cancels against ``F^T``. A spatial stress would conjugate instead."""
+        Q, F, Gam = self.state()
+        Sigma, _, _, _ = self.build(Q, F, Gam)
+        R = quat_to_matrix(quat_from_rotvec(
+            np.tile([0.5, -0.7, 0.2], (len(F), 1))))
+        rotated, _, _, _ = self.build(np.einsum("pij,pjk->pik", R, Q),
+                                      np.einsum("pij,pjk->pik", R, F), Gam)
+        assert np.abs(rotated - Sigma).max() < 1e-12 * np.abs(Sigma).max()
+
+    def test_the_couple_term_is_not_spherical_so_it_carries_torque(self):
+        """The whole reason to compute it. In the classical case ``W d_KL`` is
+        spherical and drops out of ``skew(Sigma)`` exactly; ``Gamma^T S`` does
+        not, so it contributes a torque a classical continuum cannot produce."""
+        Q, F, Gam = self.state()
+        Sigma, P, W, _ = self.build(Q, F, Gam)
+        full = configurational_torque(Sigma)
+        without = configurational_torque(eshelby_stress(W, F, P))
+        assert np.abs(full - without).max() > 1e-3 * np.abs(full).max()
+
+    def test_the_couple_term_is_second_order_in_the_wryness(self):
+        """``Gamma^T S ~ mu l^2 Gamma^2``, so it stays small wherever rotation
+        gradients are smooth and only becomes significant where they are sharp
+        -- at a band or a defect core. Measured at 0.7-1.7% of ``|Sigma|`` in a
+        smooth bending problem even at ``l_b/L = 0.3``.
+
+        Recorded because it sets expectations: a smooth test problem is the
+        *least* favourable place to look for this term.
+        """
+        Q, F, _ = self.state()
+        shares = []
+        for amplitude in (0.25, 0.5, 1.0):
+            Gam = amplitude * self.state(wryness=1.0)[2]
+            Sigma, _, _, S = self.build(Q, F, Gam)
+            couple = np.einsum("pgK,pgL->pKL", Gam, S)
+            shares.append(np.abs(couple).max() / np.abs(Sigma).max())
+        # quadrupling the wryness must raise the share far more than 4x
+        assert shares[-1] / shares[0] > 8.0

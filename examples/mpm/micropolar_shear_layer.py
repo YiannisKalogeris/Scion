@@ -105,18 +105,20 @@ FRICTION, DILATION = 8.6, 2.0
 SHEAR = 0.005                            # 5% of the thickness
 WEAK = 0.9                               # imperfect row, 10% weaker
 
-#: l_b must be resolved at *every* mesh or the coarsest one has no
-#: regularisation to demonstrate. At 20 mm it is 2, 4 and 8 cells across the
-#: three grids below.
-LENGTH_MICROPOLAR = 0.020
+#: Two constraints, and they pull opposite ways. ``l_b`` must be resolved at
+#: every mesh -- at 10 mm it is 2, 4 and 8 cells across the grids below -- and
+#: the band, which runs several ``l_b`` wide, must still fit *inside* the layer.
+#: At 20 mm it did not: the band filled all 100 mm at every mesh and the width
+#: measurement saturated, which looks like perfect objectivity and is a ceiling.
+LENGTH_MICROPOLAR = 0.010
 LENGTH_CLASSICAL = 2.0e-5                # far below any cell: no regularisation
 
 #: physical half-thickness of the weakened zone, fixed in millimetres rather
 #: than at one cell row -- see the module docstring
 IMPERFECTION = 0.005
 
-RESOLUTIONS = [10, 20, 40]
-QUICK = [10, 20]
+RESOLUTIONS = [20, 40, 80]
+QUICK = [20, 40]
 LOAD_STEPS = 120
 
 
@@ -159,9 +161,17 @@ def run(n_cells: int, l_b: float, n_steps: int = LOAD_STEPS, ppc: int = 2):
         ParticleSet(X.copy(), vol0=sub ** 3, density=1.0), plastic=True)
 
     nan = np.nan
+
     everywhere = lambda c: np.ones(len(c), dtype=bool)
     bcs = [
-        GridDirichlet(lambda c: c[:, 1] < 1e-9, np.zeros(6)),          # pinned
+        # Pinned in translation only. Clamping the microrotation here as well
+        # -- which ``np.zeros(6)`` would do -- contradicts the reference ("no
+        # microrotational boundary conditions are applied in the micropolar
+        # case") and is not harmless: it puts a rotation boundary layer at the
+        # base, which drives a wryness gradient and makes the plastic strain
+        # vary across a layer that should yield uniformly.
+        GridDirichlet(lambda c: c[:, 1] < 1e-9,
+                      np.array([0.0, 0.0, 0.0, nan, nan, nan])),
         GridDirichlet(lambda c: c[:, 1] > THICKNESS - 1e-9,
                       np.array([SHEAR, 0.0, 0.0, nan, nan, nan])),
         # no vertical motion, plane strain, and no microrotation condition --

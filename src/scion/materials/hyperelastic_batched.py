@@ -197,3 +197,104 @@ class NeoHookeanDecoupledBatched(BatchedMaterial):
         A += self.K * ((J * (2.0 * J - 1.0))[:, None, None, None, None] * GG
                        - (J * (J - 1.0))[:, None, None, None, None] * GGt)
         return P, J, A
+
+
+class TransverselyIsotropic(BatchedMaterial):
+    r"""Neo-Hookean matrix reinforced along one direction.
+
+    .. math::
+        W = \frac{\mu}{2}(I_1 - d) - \mu \ln J + \frac{\lambda}{2}(\ln J)^2
+            + \frac{k_f}{2}(I_4 - 1)^2 ,
+        \qquad I_4 = \mathbf{a}\cdot\mathbf{C}\,\mathbf{a}
+
+    the *standard reinforcing model*: an isotropic ground substance plus a fibre
+    family along the unit reference direction ``a``, which stiffens only in
+    extension along ``a``.
+
+    Why this material is in the library rather than in a project
+    -----------------------------------------------------------
+    It is ordinary constitutive modelling, and it has a structural property
+    nothing isotropic has: **its Eshelby stress is not symmetric**. For an
+    isotropic hyperelastic solid ``F^T P = C S`` with ``S`` an isotropic
+    function of ``C``, so the two are coaxial, their product is symmetric, and
+    ``skew(Sigma)`` vanishes identically at every ``F``. Anisotropy breaks the
+    coaxiality and a *configurational torque* appears. That makes this the
+    cheapest possible test bed for the torque diagnostic -- no Cosserat
+    machinery, no couple stress, and an exact zero to check against on the
+    isotropic side.
+
+    ``fibre`` is a unit vector in the **reference** configuration; it is
+    normalised on construction because ``I_4`` is quadratic in it and a
+    silently unnormalised direction rescales the whole reinforcement.
+    """
+
+    def __init__(self, mu: float, lam: float, k_fibre: float, fibre):
+        self.mu = float(mu)
+        self.lam = float(lam)
+        self.k_fibre = float(k_fibre)
+        a = np.asarray(fibre, dtype=float).ravel()
+        norm = np.linalg.norm(a)
+        if norm == 0.0:
+            raise ValueError("fibre direction must not be the zero vector")
+        self.fibre = a / norm
+
+    @classmethod
+    def from_E_nu(cls, E: float, nu: float, k_fibre: float, fibre):
+        mu = E / (2.0 * (1.0 + nu))
+        lam = E * nu / ((1.0 + nu) * (1.0 - 2.0 * nu))
+        return cls(mu, lam, k_fibre, fibre)
+
+    @property
+    def wave_speed_factor(self) -> float:
+        return float(np.sqrt(self.lam + 2.0 * self.mu + 2.0 * self.k_fibre))
+
+    def _fibre_terms(self, F: np.ndarray):
+        a = self.fibre[:F.shape[1]]
+        Fa = np.einsum("pij,j->pi", F, a)
+        I4 = np.einsum("pi,pi->p", Fa, Fa)
+        return a, Fa, I4
+
+    def pk1(self, F: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        J = sla.det(F)
+        G = sla.inv_transpose(F, J)
+        a, Fa, I4 = self._fibre_terms(F)
+        P = (self.mu * (F - G) + self.lam * np.log(J)[:, None, None] * G
+             + 2.0 * self.k_fibre * (I4 - 1.0)[:, None, None]
+             * np.einsum("pi,j->pij", Fa, a))
+        return P, J
+
+    def pk1_and_tangent(self, F: np.ndarray):
+        J = sla.det(F)
+        G = sla.inv_transpose(F, J)
+        lnJ = np.log(J)
+        a, Fa, I4 = self._fibre_terms(F)
+        aa = np.einsum("i,j->ij", a, a)
+        P = (self.mu * (F - G) + self.lam * lnJ[:, None, None] * G
+             + 2.0 * self.k_fibre * (I4 - 1.0)[:, None, None]
+             * np.einsum("pi,j->pij", Fa, a))
+
+        d = F.shape[1]
+        eye = np.eye(d)
+        A = np.broadcast_to(self.mu * np.einsum("ik,JL->iJkL", eye, eye),
+                            (F.shape[0], d, d, d, d)).copy()
+        A += ((self.mu - self.lam * lnJ)[:, None, None, None, None]
+              * np.einsum("pkJ,piL->piJkL", G, G))
+        A += self.lam * np.einsum("piJ,pkL->piJkL", G, G)
+        # dP_f/dF: one term from dI_4/dF and one from d(Fa)/dF
+        A += 4.0 * self.k_fibre * np.einsum("pi,J,pk,L->piJkL", Fa, a, Fa, a)
+        A += (2.0 * self.k_fibre * (I4 - 1.0)[:, None, None, None, None]
+              * np.einsum("ik,JL->iJkL", eye, aa)[None])
+        return P, J, A
+
+    def energy(self, F: np.ndarray) -> np.ndarray:
+        J = sla.det(F)
+        I1 = np.einsum("pij,pij->p", F, F)
+        _, _, I4 = self._fibre_terms(F)
+        lnJ = np.log(J)
+        return (0.5 * self.mu * (I1 - F.shape[1]) - self.mu * lnJ
+                + 0.5 * self.lam * lnJ ** 2
+                + 0.5 * self.k_fibre * (I4 - 1.0) ** 2)
+
+    def __repr__(self) -> str:
+        return (f"TransverselyIsotropic(mu={self.mu:.4g}, lam={self.lam:.4g}, "
+                f"k_fibre={self.k_fibre:.4g}, fibre={np.round(self.fibre, 4)})")

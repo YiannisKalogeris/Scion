@@ -68,6 +68,8 @@ __all__ = [
     "pseudomomentum",
     "total_pseudomomentum",
     "material_force",
+    "configurational_torque",
+    "micropolar_eshelby_stress",
     "j_integral",
 ]
 
@@ -138,6 +140,107 @@ def eshelby_stress_small_strain(energy: np.ndarray, H: np.ndarray,
     idx = np.arange(d)
     out[:, idx, idx] += np.asarray(energy, dtype=float)[:, None]
     return out
+
+
+def micropolar_eshelby_stress(energy: np.ndarray, F: np.ndarray,
+                              P: np.ndarray, wryness: np.ndarray,
+                              couple: np.ndarray,
+                              kinetic: np.ndarray | None = None) -> np.ndarray:
+    r"""``Sigma_KL = (W - K) d_KL - F_iK P_iL - Gamma_gK S_gL``.
+
+    The energy-momentum tensor of a micropolar continuum. ``wryness`` is
+    ``Gamma`` and ``couple`` the **Biot** couple-stress ``S = dW/dGamma``, both
+    material-frame objects, as produced by
+    :class:`~scion.materials.micropolar.MicropolarHooke`.
+
+    Derived, not transcribed, and the derivation is worth keeping because it
+    removes an ambiguity. Noether for material translations gives
+
+        Sigma_KL = W d_KL - sum_A (dA/dX_K)(dW/d(dA/dX_L))
+
+    over the fields ``A``. The microrotation enters through ``dQ/dX``, and since
+    ``Gamma_gp = -1/2 e_gth Q_pt dQ_ph/dX_p``,
+
+        (dQ_ab/dX_K) dW/d(dQ_ab/dX_L)
+            = S_gL [ -1/2 e_gtb Q_at dQ_ab/dX_K ] = S_gL Gamma_gK
+
+    -- the bracket *is* ``Gamma`` by its own definition, verified exactly. So
+    the couple term is ``Gamma^T S`` and nothing else. The reference writes this
+    slot as ``phi_i,K M_iL``, which is the same object but reached through the
+    gradient of the rotation *vector*; that route needs the tangent map ``H``
+    and therefore inherits the ``H`` versus ``H^T`` question that
+    ``core/rotation.py`` records. Working in ``Gamma`` and ``S`` avoids it.
+
+    Two traps carried over from :func:`eshelby_stress`, and one new
+    -------------------------------------------------------------------
+    ``Sigma`` is **not symmetric**, so the contraction index is fixed:
+    ``Sigma_KL N_L``. It is **invariant** under a superposed spatial rotation
+    rather than conjugated by it -- ``E``, ``Gamma``, ``B`` and ``S`` are all
+    material-frame and unaffected, and the ``R`` in ``P = Q B`` cancels against
+    ``F^T``. And ``P`` must be ``dW/dF`` for the *same* ``W``: here that is
+    ``P = Q B``, not ``J sigma F^-T``.
+
+    The new one: unlike the classical case the couple term is **not spherical**,
+    so it contributes to ``skew(Sigma)`` and hence to
+    :func:`configurational_torque`. That is the whole point of computing it --
+    it is the part of the torque a classical continuum cannot produce.
+    """
+    energy = np.asarray(energy, dtype=float)
+    if kinetic is not None:
+        energy = energy - np.asarray(kinetic, dtype=float)
+    d = F.shape[-1]
+    return (energy[:, None, None] * np.eye(d)
+            - np.einsum("piK,piL->pKL", F, P)
+            - np.einsum("pgK,pgL->pKL", wryness, couple))
+
+
+def configurational_torque(sigma: np.ndarray) -> np.ndarray:
+    r"""Axial vector of ``skew(Sigma)``: the torque *on the material manifold*.
+
+    ``(n, 3, 3) -> (n, 3)`` in 3-D; ``(n, 2, 2) -> (n,)`` in 2-D, where a skew
+    tensor has one component.
+
+    Where it comes from
+    -------------------
+    ``Sigma`` is **not symmetric in general** -- that is already recorded as a
+    trap for the contraction index, ``Sigma_KL N_L``. Its antisymmetric part is
+    a physical quantity in its own right. Where a material force drives a defect
+    to *translate* through the material, this drives it to *rotate*.
+
+    It vanishes identically for any isotropic hyperelastic solid, and the reason
+    is worth stating because it makes the zero exact rather than approximate:
+    ``F^T P = C S`` with ``S`` an isotropic function of ``C``, so the two are
+    coaxial, their product is symmetric, and the skew part is zero at **every**
+    ``F``. Anisotropy breaks the coaxiality and the torque appears. So a nonzero
+    reading on an isotropic material is a bug, not a small effect.
+
+    Numerically better behaved than the material force
+    --------------------------------------------------
+    ``Sigma = (W - K) I - F^T P`` carries the energy on its *diagonal*, and a
+    spherical tensor has no antisymmetric part, so ``W`` **cancels out of this
+    quantity exactly**:
+
+        skew(Sigma) = -skew(F^T P)
+
+    That matters. The material force suffers a near-total cancellation between
+    ``W I`` and ``F^T P`` -- near a crack tip ``sigma`` is ~1e5 times ``J``, and
+    what survives can be quadrature error the size of the answer, which is why
+    ``eshelby_stress_small_strain`` exists. The torque has no such cancellation
+    to suffer: the large, nearly-cancelling term is not in it at all.
+
+    Passing the *micropolar* Eshelby stress
+    ``Sigma_KL = W d_KL - F_iK P_iL - phi_i,K M_iL`` is the intended use, and
+    there the third term is genuinely non-spherical and does contribute.
+    """
+    sigma = np.asarray(sigma, dtype=float)
+    d = sigma.shape[-1]
+    if d == 2:
+        return 0.5 * (sigma[:, 1, 0] - sigma[:, 0, 1])
+    if d != 3:
+        raise ValueError(f"expected 2-D or 3-D tensors, got {d}-D")
+    return 0.5 * np.stack([sigma[:, 2, 1] - sigma[:, 1, 2],
+                           sigma[:, 0, 2] - sigma[:, 2, 0],
+                           sigma[:, 1, 0] - sigma[:, 0, 1]], axis=1)
 
 
 def pseudomomentum(rho0, F: np.ndarray, v: np.ndarray) -> np.ndarray:

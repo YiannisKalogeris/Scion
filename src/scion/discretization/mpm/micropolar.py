@@ -575,14 +575,30 @@ class MicropolarMPMStepper:
             k_all = np.broadcast_to(
                 np.asarray(self.plasticity.k, dtype=float),
                 (particles.n,))[sl][idx]
-            _, _, _, _, work = self.plasticity.residuals(
-                Q[idx], F[idx], Fe_tr[idx], self._Ge_tr[sl][idx],
-                self._chi[sl][idx], state["Ue"][sl][idx],
-                state["Gam_e"][sl][idx], state["chi"][sl][idx],
-                state["dgamma"][sl][idx], k_all)
-            P = self.plasticity.algorithmic_jacobian(
-                Q[idx], F[idx], Fe_tr[idx], state["Ue"][sl][idx],
-                state["Gam_e"][sl][idx], state["dgamma"][sl][idx], work)
+
+            # Apex points get their own linearisation. ``P = -C^-1 T`` is not
+            # merely inaccurate for them, it is the wrong problem: ``C`` carries
+            # the smooth surface's yield row, and an apex point's constraint is
+            # the tip, not ``f = 0`` along the cone.
+            apex = state.get(
+                "apex", np.zeros(particles.n, dtype=bool))[sl][idx]
+            P = np.zeros((len(idx), self.plasticity.n_unknowns,
+                          self.plasticity.n_inputs))
+            sm = ~apex
+            if sm.any():
+                j = idx[sm]
+                _, _, _, _, work = self.plasticity.residuals(
+                    Q[j], F[j], Fe_tr[j], self._Ge_tr[sl][j],
+                    self._chi[sl][j], state["Ue"][sl][j],
+                    state["Gam_e"][sl][j], state["chi"][sl][j],
+                    state["dgamma"][sl][j], k_all[sm])
+                P[sm] = self.plasticity.algorithmic_jacobian(
+                    Q[j], F[j], Fe_tr[j], state["Ue"][sl][j],
+                    state["Gam_e"][sl][j], state["dgamma"][sl][j], work)
+            if apex.any():
+                j = idx[apex]
+                P[apex] = self.plasticity.apex_jacobian(
+                    Fe_tr[j], state["Ue"][sl][j])
 
             n = P.shape[0]
             isl = self.plasticity.input_slices
