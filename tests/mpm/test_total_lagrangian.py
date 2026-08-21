@@ -48,7 +48,10 @@ def block(dx=DX):
         ((0.0, 0.0), (1.0, 1.0)), dx, ppc=2, density=RHO)
 
 
-def setup(basis="quadratic", transfer=None, hessian=False, n_grid=N):
+# NOT named `setup`: pytest treats a module-level `setup` as the
+# xunit module hook and calls it with the module object, which
+# arrives here as `basis` and errors out every test in the file.
+def make_case(basis="quadratic", transfer=None, hessian=False, n_grid=N):
     dx = 1.0 / n_grid
     grid = CartesianGrid(shape=(n_grid, n_grid), dx=dx, basis=get_basis(basis))
     parts = block(dx)
@@ -91,16 +94,16 @@ class TestReferencePositions:
 
 class TestFixedStencil:
     def test_prepare_is_idempotent(self):
-        _, p, s = setup()
+        _, p, s = make_case()
         assert s.prepare(p) is s.prepare(p)
 
     def test_stencil_is_none_before_the_first_step(self):
-        _, _, s = setup()
+        _, _, s = make_case()
         assert s.stencil is None
 
     def test_stencil_does_not_change_as_the_body_moves(self):
         """The literal statement of 'no cell crossing'."""
-        _, p, s = setup()
+        _, p, s = make_case()
         p.v[:] = np.array([1.0, 0.0])
         before = s.prepare(p).node_id.copy()
         with quiet():
@@ -131,14 +134,14 @@ class TestFixedStencil:
             s.prepare(block())
 
     def test_hessian_is_available_when_requested(self):
-        _, p, s = setup(hessian=True)
+        _, p, s = make_case(hessian=True)
         st = s.prepare(p)
         assert st.hess is not None
         assert st.hess.shape == (p.n, grid_k(st), 2, 2)
         assert np.all(np.isfinite(st.hess))
 
     def test_hessian_absent_by_default(self):
-        _, p, s = setup()
+        _, p, s = make_case()
         assert s.prepare(p).hess is None
 
 
@@ -148,7 +151,7 @@ def grid_k(st):
 
 class TestKinematics:
     def test_a_body_at_rest_stays_exactly_at_rest(self):
-        _, p, s = setup()
+        _, p, s = make_case()
         with quiet():
             s.run(p, n_steps=200)
         assert np.abs(p.x - p.X).max() == 0.0
@@ -161,7 +164,7 @@ class TestKinematics:
         This is the property that distinguishes total- from updated-Lagrangian:
         no accumulation, so no integration error in F at all.
         """
-        grid, p, s = setup()
+        grid, p, s = make_case()
         st = s.prepare(p)
         A = np.array([[0.10, 0.03], [0.00, -0.05]])
         s.u_nodes = grid.node_coordinates() @ A.T
@@ -169,13 +172,13 @@ class TestKinematics:
                            atol=1e-13)
 
     def test_zero_displacement_gives_identity(self):
-        _, p, s = setup()
+        _, p, s = make_case()
         st = s.prepare(p)
         assert np.allclose(s.deformation_gradient(st), np.eye(2))
 
     def test_position_follows_the_same_nodal_field_as_F(self):
         """x and F must be read from one field, or they can disagree."""
-        grid, p, s = setup()
+        grid, p, s = make_case()
         p.v[:] = np.array([0.5, 0.2])
         with quiet():
             s.run(p, n_steps=100)
@@ -189,7 +192,7 @@ class TestConservation:
         ("pic", PIC()), ("flip", FLIP(alpha=0.95)), ("apic", APIC()),
     ])
     def test_momentum_conserved_without_forces_or_walls(self, name, transfer):
-        _, p, s = setup(transfer=transfer)
+        _, p, s = make_case(transfer=transfer)
         p.v[:] = np.array([0.7, -0.3])
         p0 = p.linear_momentum()
         with quiet():
@@ -198,7 +201,7 @@ class TestConservation:
         assert drift < 1e-12
 
     def test_mass_is_conserved(self):
-        _, p, s = setup()
+        _, p, s = make_case()
         p.v[:] = np.array([0.4, 0.0])
         m0 = p.mass.sum()
         with quiet():
@@ -207,7 +210,7 @@ class TestConservation:
 
     @pytest.mark.parametrize("basis", ["linear", "quadratic", "cubic"])
     def test_runs_on_every_point_basis(self, basis):
-        _, p, s = setup(basis=basis)
+        _, p, s = make_case(basis=basis)
         p.v[:] = np.array([0.3, 0.1])
         with quiet():
             s.run(p, n_steps=100)
@@ -240,7 +243,7 @@ class TestMaterialInterface:
         assert np.all(np.isfinite(s.state.F_e))
 
     def test_cfl_dt_is_positive(self):
-        _, p, s = setup()
+        _, p, s = make_case()
         assert s.cfl_dt(p, RHO) > 0.0
 
 
@@ -256,7 +259,7 @@ class TestConfigurationalForcesOnARun:
         from scion.materials.eshelby import eshelby_stress, material_force
         from projects.configurational_mpm.forces import configurational_force
 
-        grid, p, s = setup(basis=basis, hessian=True)
+        grid, p, s = make_case(basis=basis, hessian=True)
         if shear:
             p.v[:, 0] = shear * (p.x[:, 1] - 0.5)
         st = s.prepare(p)

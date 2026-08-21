@@ -22,7 +22,18 @@ from .basis import (
     uGIMP,
 )
 from .cpdi import CPDIGrid, corner_offsets
+from .ghost import ghost_faces, ghost_penalty, populated_cells
+from .implicit import (
+    GridDirichlet,
+    ImplicitMPMStepper,
+    InvertedParticle,
+    LoadStepResult,
+)
 from .boundary import Box, GridBC, HalfSpace, PrescribedVelocity
+from .micropolar import (
+    MicropolarMPMStepper,
+    attach_micropolar_state,
+)
 from .particles import ParticleSet
 from .stepper import ExplicitMPMStepper
 from .total_lagrangian import TotalLagrangianStepper
@@ -49,6 +60,15 @@ __all__ = [
     # time integration
     "ExplicitMPMStepper",
     "TotalLagrangianStepper",
+    "ImplicitMPMStepper",
+    "MicropolarMPMStepper",
+    "attach_micropolar_state",
+    "GridDirichlet",
+    "LoadStepResult",
+    "InvertedParticle",
+    "ghost_penalty",
+    "ghost_faces",
+    "populated_cells",
     "PolyPIC",
     "MLSMPM",
     "CPDIGrid",
