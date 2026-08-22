@@ -279,3 +279,62 @@ class TestPropagation:
         # exact straightness is not available, since each increment is taken
         # along a numerically computed direction
         assert np.abs(crack.vertices[:, 1] - yc).max() < 0.1 * dl
+
+
+# ======================================================================
+# orientation-dependent toughness
+# ======================================================================
+class TestAnisotropicToughness:
+    """The ingredient that actually deflects cracks.
+
+    Measured first, then implemented: anisotropic *elasticity* alone changes the
+    driving force by up to 3.29x and the direction by ~2 degrees, in three
+    configurations including a mixed-mode one with a real -31 degree kink and no
+    restoring symmetry. Deflection needs a *weak plane* -- low toughness along
+    the fibre -- because a crack follows where ``G/G_c(theta)`` is largest.
+    """
+
+    from scion.discretization.mpm.crack import (AnisotropicToughness,
+                                                propagation_direction)
+
+    def test_isotropic_toughness_recovers_the_material_force_direction(self):
+        """The reduction that keeps the new path from replacing the old one."""
+        from scion.discretization.mpm.crack import propagation_direction
+        for ang in (0.0, 0.7, -1.2):
+            J = np.array([np.cos(ang), np.sin(ang)])
+            assert_allclose(propagation_direction(J), ang, atol=1e-12)
+
+    def test_the_crack_turns_toward_the_weak_plane(self):
+        """And approaches it asymptotically as the toughness ratio grows --
+        measured 0.0 / 33.7 / 50.1 / 57.5 degrees for ratios 1 / 2 / 5 / 20
+        against a weak plane at 60."""
+        from scion.discretization.mpm.crack import (AnisotropicToughness,
+                                                    propagation_direction)
+        weak = np.radians(60.0)
+        J = np.array([1.0, 0.0])
+        got = [np.degrees(propagation_direction(
+                   J, AnisotropicToughness(weak, 1.0, r), heading=0.0))
+               for r in (1.0, 2.0, 5.0, 20.0)]
+        assert got[0] == pytest.approx(0.0, abs=1e-9)   # isotropic: no turn
+        assert all(b > a for a, b in zip(got, got[1:]))  # monotone
+        assert got[-1] < 60.0                            # never overshoots
+        assert got[-1] > 55.0                            # but gets close
+
+    def test_a_weak_plane_along_the_crack_does_not_turn_it(self):
+        """The null. If the weak direction is already the crack direction there
+        is nothing to gain by turning, whatever the ratio."""
+        from scion.discretization.mpm.crack import (AnisotropicToughness,
+                                                    propagation_direction)
+        J = np.array([1.0, 0.0])
+        for r in (2.0, 10.0):
+            d = propagation_direction(J, AnisotropicToughness(0.0, 1.0, r),
+                                      heading=0.0)
+            assert abs(d) < 1e-9
+
+    def test_the_anisotropy_must_not_be_inverted(self):
+        """``g_max < g_min`` means the 'weak' direction is the tough one, which
+        would turn the crack *away* from the weak plane while looking like a
+        sign convention. Refused rather than silently obeyed."""
+        from scion.discretization.mpm.crack import AnisotropicToughness
+        with pytest.raises(ValueError, match="inverted"):
+            AnisotropicToughness(0.0, 5.0, 1.0)

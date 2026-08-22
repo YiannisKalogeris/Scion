@@ -725,3 +725,100 @@ class TestMicropolarEshelby:
             shares.append(np.abs(couple).max() / np.abs(Sigma).max())
         # quadrupling the wryness must raise the share far more than 4x
         assert shares[-1] / shares[0] > 8.0
+
+
+# ======================================================================
+# the micropolar configurational torque
+# ======================================================================
+class TestMicropolarTorque:
+    """``skew(Sigma)`` is the orientation derivative *classically* and is NOT
+    for a Cosserat solid.
+
+    The reason is structural, not a matter of accuracy. Under a rotation of the
+    reference frame the classical argument transforms one-sidedly, ``F -> F
+    R^T``, while the Cosserat arguments transform by **conjugation** -- ``E ->
+    R E R^T`` and ``Gamma -> R Gamma R^T``, because ``Q -> Q R^T`` turns with
+    the frame too. Differentiating frame indifference therefore yields
+    commutators, and the conjugate quantity is
+
+        tau = axial skew(B E^T - E^T B + S Gamma^T - Gamma^T S).
+
+    ``Sigma`` is untouched by this: it still generates material translations,
+    ``Div Sigma = 0`` still holds, and it is still the right tensor for ``J``.
+    """
+
+    KW = dict(E=1.0e6, nu=0.3, N=0.3, l_t=0.10, l_b=0.05, psi=1.5)
+
+    def state(self, seed=3):
+        from scion.core.rotation import quat_from_rotvec, quat_to_matrix
+        rng = np.random.default_rng(seed)
+        F = np.diag([1.3, 0.9, 0.95])[None] + 0.05 * rng.standard_normal((1, 3, 3))
+        Q = quat_to_matrix(quat_from_rotvec(np.array([[0.05, -0.03, 0.08]])))
+        return F, Q, 0.30 * rng.standard_normal((1, 3, 3))
+
+    def material(self, alpha, k_f=4.0e5, k_c=8.0e2):
+        from scion.materials.micropolar import MicropolarTransverselyIsotropic
+        return MicropolarTransverselyIsotropic.from_technical(
+            fibre=[np.cos(alpha), np.sin(alpha), 0.0],
+            k_fibre=k_f, k_fibre_curvature=k_c, **self.KW)
+
+    def pieces(self, m, F, Q, Gam):
+        E = np.einsum("pji,pjk->pik", Q, F) - np.eye(3)
+        B, S = m.stresses(E, Gam)
+        return E, B, S, m.energy(E, Gam)
+
+    def test_it_is_minus_half_the_energy_gradient_in_orientation(self):
+        """The identity that says what the quantity is. Measured 1e-10."""
+        from scion.materials.eshelby import micropolar_configurational_torque
+        F, Q, Gam = self.state()
+        h = 1e-6
+        for alpha in np.radians([10, 30, 55, 80, 115, 150]):
+            E, B, S, _ = self.pieces(self.material(alpha), F, Q, Gam)
+            tau = micropolar_configurational_torque(B, E, S, Gam)[0, 2]
+            dW = (self.pieces(self.material(alpha + h), F, Q, Gam)[3][0]
+                  - self.pieces(self.material(alpha - h), F, Q, Gam)[3][0]) / (2 * h)
+            assert abs(tau - (-0.5 * dW)) < 1e-6 * max(abs(dW), 1.0)
+
+    def test_skew_sigma_is_a_different_quantity(self):
+        """The regression guard on the correction. Reading ``skew(Sigma)`` as
+        the torque is not slightly off, it is a different object -- measured
+        0.13 to 10 relative. If these two ever agree, one of them has been
+        quietly changed."""
+        from scion.materials.eshelby import micropolar_configurational_torque
+        F, Q, Gam = self.state()
+        worst = 0.0
+        for alpha in np.radians([10, 55, 115]):
+            m = self.material(alpha)
+            E, B, S, W = self.pieces(m, F, Q, Gam)
+            P = np.einsum("pia,pab->pib", Q, B)
+            wrong = configurational_torque(
+                micropolar_eshelby_stress(W, F, P, Gam, S))[0, 2]
+            right = micropolar_configurational_torque(B, E, S, Gam)[0, 2]
+            worst = max(worst, abs(wrong - right) / abs(right))
+        assert worst > 0.1
+
+    def test_an_isotropic_cosserat_solid_has_no_orientation_torque(self):
+        """No preferred direction means nothing to rotate, so the *orientation*
+        torque must vanish identically -- even though ``skew(Sigma)`` does not,
+        because it carries the ``Gamma^T S`` couple term. That contrast is the
+        sharpest statement of the difference between the two quantities."""
+        from scion.materials.micropolar import MicropolarHooke
+        from scion.materials.eshelby import micropolar_configurational_torque
+        F, Q, Gam = self.state()
+        iso = MicropolarHooke.from_technical(**self.KW)
+        E, B, S, W = self.pieces(iso, F, Q, Gam)
+        tau = micropolar_configurational_torque(B, E, S, Gam)
+        P = np.einsum("pia,pab->pib", Q, B)
+        skew_sig = configurational_torque(
+            micropolar_eshelby_stress(W, F, P, Gam, S))
+        scale = np.abs(micropolar_eshelby_stress(W, F, P, Gam, S)).max()
+        assert np.abs(tau).max() < 1e-10 * scale        # exactly zero
+        assert np.abs(skew_sig).max() > 1e-3 * scale    # and this one is not
+
+    def test_the_fibre_terms_are_what_make_it_nonzero(self):
+        from scion.materials.eshelby import micropolar_configurational_torque
+        F, Q, Gam = self.state()
+        E, B, S, _ = self.pieces(self.material(0.6, k_f=0.0, k_c=0.0), F, Q, Gam)
+        assert np.abs(micropolar_configurational_torque(B, E, S, Gam)).max() < 1e-6
+        E, B, S, _ = self.pieces(self.material(0.6), F, Q, Gam)
+        assert np.abs(micropolar_configurational_torque(B, E, S, Gam)).max() > 1e3

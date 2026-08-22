@@ -44,7 +44,8 @@ import numpy as np
 
 from ...materials.eshelby import material_force
 
-__all__ = ["CrackPath", "split_nodes", "crack_tip_force"]
+__all__ = ["CrackPath", "split_nodes", "crack_tip_force",
+           "AnisotropicToughness", "propagation_direction"]
 
 
 def _crosses(p1, p2, q1, q2):
@@ -219,3 +220,89 @@ def crack_tip_force(sigma, volume, grad_w, node_id, n_nodes, node_xy,
     # the crack and a growth criterion built on it would drive the tip the
     # wrong way while looking perfectly path-independent.
     return -G[inside].sum(axis=0)
+
+
+class AnisotropicToughness:
+    r"""``G_c(theta)`` with a weak plane -- the ingredient that makes cracks
+    deflect.
+
+    Why this is needed, measured rather than assumed
+    ------------------------------------------------
+    Anisotropic *elasticity* alone does **not** turn cracks. Measured across
+    three configurations, microstructure orientation changes the driving force
+    by up to **3.29x** and the direction by about **2 degrees**, including in a
+    mixed-mode geometry with a genuine -31 degree kink and no restoring
+    symmetry. The direction is set by the stress field, which geometry and
+    loading dominate.
+
+    Real composites, wood and bone deflect cracks because they have *weak
+    planes*: the toughness is low along the fibre or interface. A crack follows
+    where ``G / G_c(theta)`` is largest, not where ``G`` is largest. With
+    ``G_c`` isotropic there is nothing to pull the direction away from the
+    elastic solution -- which is exactly what the measurements show.
+
+    .. math::
+        G_c(\theta) = G_{min} + (G_{max} - G_{min})
+                       \sin^2(\theta - \theta_{weak})
+
+    so ``G_c`` is smallest along ``theta_weak`` and largest across it. The ratio
+    ``G_max/G_min`` is the toughness anisotropy, and it is a **separate**
+    material property from the elastic anisotropy ``k_fibre`` -- they need not
+    share a direction, though in a fibre composite they usually do.
+    """
+
+    def __init__(self, weak_direction: float, g_min: float, g_max: float):
+        if g_min <= 0.0:
+            raise ValueError(f"g_min must be positive, got {g_min}")
+        if g_max < g_min:
+            raise ValueError(
+                f"g_max ({g_max}) is below g_min ({g_min}); the weak direction "
+                f"is the one with the *lower* toughness, so this has the "
+                f"anisotropy inverted")
+        self.weak_direction = float(weak_direction)
+        self.g_min, self.g_max = float(g_min), float(g_max)
+
+    @property
+    def ratio(self) -> float:
+        return self.g_max / self.g_min
+
+    def __call__(self, theta) -> np.ndarray:
+        return self.g_min + (self.g_max - self.g_min) * np.sin(
+            np.asarray(theta, dtype=float) - self.weak_direction) ** 2
+
+    def __repr__(self) -> str:
+        return (f"AnisotropicToughness(weak={np.degrees(self.weak_direction):.1f}"
+                f" deg, g_min={self.g_min:.4g}, ratio={self.ratio:.3g})")
+
+
+def propagation_direction(J, toughness=None, heading=None, half_cone=1.4,
+                          n=721):
+    r"""Direction maximising ``G(theta) / G_c(theta)``. Returns radians.
+
+    ``G(theta)`` is taken as the projection ``|G| cos(theta - phi)`` of the
+    material force, ``phi`` being its own direction. **That is the standard
+    configurational approximation and it is an approximation**: the exact energy
+    release for a kinked extension needs the kinked-crack solution (Amestoy &
+    Leblond), not a projection. It is exact at ``theta = phi`` and degrades as
+    the kink grows, so a large predicted turn should be treated as qualitative.
+
+    With ``toughness=None`` this returns ``phi`` exactly -- the isotropic answer
+    -- so the anisotropic path reduces to the existing behaviour rather than
+    replacing it.
+
+    ``half_cone`` restricts the search to within that many radians of
+    ``heading`` (the current crack direction, defaulting to ``phi``), which
+    keeps the crack from turning backwards into its own wake. The default 1.4
+    rad is just under 90 degrees.
+    """
+    J = np.asarray(J, dtype=float)[:2]
+    mag = float(np.linalg.norm(J))
+    if mag == 0.0:
+        raise ValueError("a zero material force has no direction to propagate")
+    phi = float(np.arctan2(J[1], J[0]))
+    if toughness is None:
+        return phi
+    ref = phi if heading is None else float(heading)
+    th = np.linspace(ref - half_cone, ref + half_cone, n)
+    drive = mag * np.cos(th - phi) / toughness(th)
+    return float(th[int(np.argmax(drive))])

@@ -194,3 +194,134 @@ class MicropolarHooke:
         return (f"MicropolarHooke(lam={self.lam:.4g}, mu={self.mu:.4g}, "
                 f"N={self.coupling_number:.3g}, l_b={self.length_bending:.3g}, "
                 f"l_t={self.length_torsion:.3g})")
+
+
+class MicropolarTransverselyIsotropic(MicropolarHooke):
+    r"""Cosserat elasticity with one preferred direction.
+
+    Why it exists
+    -------------
+    ``skew(Sigma)`` -- the configurational torque, and the density whose contour
+    integral is the **L-integral** of Knowles & Sternberg -- vanishes
+    *identically* for an isotropic solid. So the quantity that distinguishes a
+    microstructured medium from a classical one is exactly zero until the
+    material has an orientation to rotate. This is the cheapest law that gives
+    it one while remaining a Cosserat continuum.
+
+    Note the distinction from
+    :class:`~scion.materials.hyperelastic_batched.TransverselyIsotropic`, which
+    is *classical*: it also has a nonzero torque, so anisotropy alone is what
+    makes ``skew(Sigma)`` nonzero and micropolarity is **not** what produces it.
+    What micropolarity adds here is the second constant, ``k_fibre_curvature``,
+    which makes the *couple*-stress response anisotropic too -- bending about
+    the fibre differs from bending across it -- and that has no classical
+    counterpart at all.
+
+    The construction
+    ----------------
+    Quadratic, like the isotropic law, so ``D`` stays constant and the fast
+    tangent path is untouched. With the structural tensor ``M = a (x) a``:
+
+        W = W_iso(E, Gamma) + k_f (a.E.a)^2 / 2 + k_c (a.Gamma.a)^2 / 2
+
+    giving ``D += k_f M (x) M`` and ``D_curvature += k_c M (x) M``. Both added
+    terms are invariant under rotations about ``a``, which is transverse
+    isotropy, and both vanish with their constant so the isotropic law is
+    recovered exactly rather than approximately.
+
+    One constant each rather than a complete transversely isotropic basis. For a
+    *non-symmetric* argument -- and the Cosserat strain is not symmetric -- that
+    basis has considerably more members than the classical five, and every extra
+    one is a modulus nobody has measured for a foam. These two are the
+    interpretable ones: stiffness along the fibre, and stiffness against
+    twisting about it.
+
+    Parameters
+    ----------
+    fibre : ``(3,)`` preferred direction in the **reference** configuration.
+        Normalised on construction. It is a *material* direction, so it convects
+        with the deformation rather than staying fixed in space -- which is what
+        makes rotating it a meaningful configurational operation.
+    k_fibre : extra stiffness for stretching along ``a``.
+    k_fibre_curvature : extra stiffness for wryness about ``a``.
+    """
+
+    def __init__(self, lam: float, mu: float, fibre, k_fibre: float = 0.0,
+                 k_fibre_curvature: float = 0.0, a: float = 0.0,
+                 alpha: float = 0.0, beta: float = 0.0, gam: float = 0.0):
+        super().__init__(lam=lam, mu=mu, a=a, alpha=alpha, beta=beta, gam=gam)
+        f = np.asarray(fibre, dtype=float)
+        if f.shape != (3,):
+            raise ValueError(f"fibre must be a 3-vector, got {f.shape}")
+        n = np.linalg.norm(f)
+        if n == 0.0:
+            raise ValueError("the fibre direction cannot be the zero vector")
+        self.fibre = f / n
+        self.k_fibre = float(k_fibre)
+        self.k_fibre_curvature = float(k_fibre_curvature)
+        if self.k_fibre < 0.0 or self.k_fibre_curvature < 0.0:
+            raise ValueError(
+                f"fibre stiffnesses must be non-negative, got "
+                f"{k_fibre} and {k_fibre_curvature}: a negative one subtracts "
+                f"energy along the preferred direction and can make the law "
+                f"non-elliptic without any obvious symptom")
+
+    @classmethod
+    def from_technical(cls, E: float, nu: float, fibre, k_fibre: float = 0.0,
+                       k_fibre_curvature: float = 0.0, N: float = 0.0,
+                       l_t: float = 0.0, l_b: float = 0.0, psi: float = 1.0):
+        """As :meth:`MicropolarHooke.from_technical`, plus the fibre."""
+        iso = MicropolarHooke.from_technical(E=E, nu=nu, N=N, l_t=l_t,
+                                             l_b=l_b, psi=psi)
+        return cls(lam=iso.lam, mu=iso.mu, fibre=fibre, k_fibre=k_fibre,
+                   k_fibre_curvature=k_fibre_curvature, a=iso.a,
+                   alpha=iso.alpha, beta=iso.beta, gam=iso.gam)
+
+    @property
+    def _MM(self) -> np.ndarray:
+        a = self.fibre
+        return np.einsum("i,j,k,l->ijkl", a, a, a, a)
+
+    @property
+    def D(self) -> np.ndarray:
+        return super().D + self.k_fibre * self._MM
+
+    @property
+    def D_curvature(self) -> np.ndarray:
+        return super().D_curvature + self.k_fibre_curvature * self._MM
+
+    def stresses(self, E: np.ndarray,
+                 Gamma: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """``(E, Gamma) -> (B, S)``. The isotropic part written out, the fibre
+        part added on; the tests check both against the ``D`` contraction."""
+        B, S = super().stresses(E, Gamma)
+        a = self.fibre
+        M = np.einsum("i,j->ij", a, a)
+        if self.k_fibre:
+            aEa = np.einsum("i,nij,j->n", a, np.asarray(E, dtype=float), a)
+            B = B + self.k_fibre * aEa[:, None, None] * M
+        if self.k_fibre_curvature:
+            aGa = np.einsum("i,nij,j->n", a, np.asarray(Gamma, dtype=float), a)
+            S = S + self.k_fibre_curvature * aGa[:, None, None] * M
+        return B, S
+
+    def rotated(self, rotation) -> "MicropolarTransverselyIsotropic":
+        """The same material with its fibre turned by ``rotation`` ``(3, 3)``.
+
+        The operation the configurational torque is conjugate to: it is what
+        ``-1/2 dW/d(material orientation)`` differentiates with respect to.
+        """
+        return MicropolarTransverselyIsotropic(
+            lam=self.lam, mu=self.mu,
+            fibre=np.asarray(rotation, dtype=float) @ self.fibre,
+            k_fibre=self.k_fibre,
+            k_fibre_curvature=self.k_fibre_curvature,
+            a=self.a, alpha=self.alpha, beta=self.beta, gam=self.gam)
+
+    def __repr__(self) -> str:
+        return (f"MicropolarTransverselyIsotropic(mu={self.mu:.4g}, "
+                f"N={self.coupling_number:.3g}, "
+                f"l_b={self.length_bending:.3g}, "
+                f"fibre={np.array2string(self.fibre, precision=3)}, "
+                f"k_fibre={self.k_fibre:.4g}, "
+                f"k_fibre_curvature={self.k_fibre_curvature:.4g})")
