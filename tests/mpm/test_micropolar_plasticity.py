@@ -276,7 +276,13 @@ class TestReturnMap:
         Fe_tr = F.copy()
         out = m.return_map(Q, F, Fe_tr, np.zeros((n, 3, 3)), np.zeros(n))
 
-        assert out["apex"].all() and out["plastic"].all()
+        # Which branch delivers it is deliberately *not* asserted. For a purely
+        # hydrostatic trial state ``s = 0``, so the flow direction is purely
+        # volumetric and the smooth return lands on the tip unaided -- both
+        # branches give the same answer, and pinning the branch would be
+        # testing the dispatch rather than the physics. What must hold is the
+        # state: on the tip, exactly.
+        assert out["plastic"].all()
         p_, s_, q_ = m.invariants(out["tau"], out["nu"])
         assert np.abs(q_).max() == 0.0            # exactly, not to a tolerance
         assert np.abs(s_).max() == 0.0
@@ -288,6 +294,43 @@ class TestReturnMap:
         # past the tip the trial state sat
         assert (out["dgamma"] > 0).all()
         assert np.all(np.diff(out["dgamma"]) > 0)
+
+    def test_the_apex_branch_fires_only_as_a_rescue(self):
+        """The dispatch, and the reason it sits *after* the smooth solve.
+
+        Deciding up front needs a marginal inequality, and marginal dispatches
+        chatter: measured, two points of 1600 entering and leaving the apex set
+        on a periodic six-iteration cycle, which stalled the global Newton and
+        took the biaxial test to 11% strain where the branch-free path reached
+        17.6%. Convergence of the smooth solve is the sharp criterion.
+
+        Note what is deliberately **not** asserted: which states need the
+        rescue. That is not a geometric predicate -- it is whatever the smooth
+        Newton cannot manage in ``max_iter``, and it moves with the material
+        (``1.10 I`` is rescued here and returns smoothly at a lower cohesion,
+        while ``1.30 I`` does the opposite). The property worth pinning is that
+        **both routes land on the same state**, which is what makes escalating
+        on failure a rescue rather than a change of answer.
+        """
+        m = model(friction=8.6, dilation=2.0)
+        Q = np.broadcast_to(np.eye(3), (1, 3, 3)).copy()
+        G, c = np.zeros((1, 3, 3)), np.zeros(1)
+
+        states = [(np.eye(3) * 1.10)[None], (np.eye(3) * 1.30)[None],
+                  np.diag([1.35, 1.10, 1.04])[None]]
+        routed = []
+        for Fe in states:
+            out = m.return_map(Q, Fe.copy(), Fe, G, c)
+            routed.append(bool(out["apex"][0]))
+            p_, s_, q_ = m.invariants(out["tau"], out["nu"])
+            assert_allclose(p_ / m.apex_pressure(out["chi"]), 1.0, rtol=1e-9)
+            assert np.abs(q_).max() < 1e-9 * m.k
+            assert np.abs(out["Gam_e"]).max() < 1e-9
+            assert (out["dgamma"] > 0).all()
+
+        # both routes must be exercised, or this test has no power over the
+        # dispatch it exists to check
+        assert any(routed) and not all(routed)
 
     def test_the_apex_return_conserves_the_volumetric_flow(self):
         """``det U^e = exp(-dgamma beta_DP) det (F^e)^tr`` -- the exponential
@@ -306,14 +349,25 @@ class TestReturnMap:
         """The standing refusal, and it is structural rather than a gap. With
         ``beta_DP = 0`` the flow is purely deviatoric, so it can produce no
         volume change, so nothing can carry the pressure back to the tip. The
-        two-equation system loses ``dgamma`` from its second row entirely."""
+        two-equation system loses ``dgamma`` from its second row entirely.
+
+        It must be a **RuntimeError**, not a ValueError, and the distinction is
+        not pedantic: this is discovered mid-solve, and the one legitimate
+        remedy is a smaller load step, which may keep every point below the
+        tip. A ValueError reads as a configuration error and escapes the load
+        stepper's cut-back, turning a recoverable step into a dead run -- which
+        is exactly how it killed the biaxial sweep.
+        """
         m = model(friction=8.6, dilation=0.0)
         n = 1
         Q = np.broadcast_to(np.eye(3), (n, 3, 3)).copy()
         Fe_tr = np.broadcast_to(np.eye(3) * 1.10, (n, 3, 3)).copy()
-        with pytest.raises(ValueError, match="zero dilatancy"):
+        with pytest.raises(RuntimeError, match="zero dilatancy"):
             m.return_map(Q, np.broadcast_to(np.eye(3), (n, 3, 3)).copy(),
                          Fe_tr, np.zeros((n, 3, 3)), np.zeros(n))
+        # a direct call is a configuration error and keeps the ValueError
+        with pytest.raises(ValueError, match="zero dilatancy"):
+            m.apex_return(Fe_tr, np.zeros(n))
 
     def test_the_apex_tangent_matches_finite_differences(self):
         """``dU^e/d(F^e)^tr`` and ``ddgamma/d(F^e)^tr`` against central

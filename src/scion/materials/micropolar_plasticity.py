@@ -371,37 +371,19 @@ class MicropolarDruckerPrager:
                         apex=np.zeros(n, dtype=bool), iterations=0,
                         converged=True)
 
-        # Points whose *trial* pressure is already past the tip are split off
-        # before Newton rather than after it fails. They cannot converge on the
-        # smooth surface, and left in the batch they hold the whole chunk at
-        # ``max_iter`` -- the loop breaks only when every point has converged.
+        # The apex branch fires only on points the *smooth* return actually
+        # fails, never on a pressure test done up front. Deciding in advance
+        # needs a marginal inequality -- ``dgamma >= 0`` from a separate
+        # equation -- and a trial pressure past the tip does not imply the
+        # smooth surface is unreachable, since enough deviatoric stress lets
+        # dilatancy drag ``p`` back onto the cone at ``q > 0``. Measured, that
+        # marginality chatters: two points of 1600 entering and leaving the
+        # apex set on a periodic six-iteration cycle, which no global Newton
+        # can converge through. Convergence of the smooth solve is the sharp
+        # criterion, and escalating only on its failure cannot do worse than
+        # not having the branch at all.
         apex = np.zeros(n, dtype=bool)
-        if self.alpha_dp > 0.0:
-            # A trial pressure past the tip is *necessary* for the apex branch
-            # and not sufficient: such a state can still return smoothly if it
-            # carries enough deviatoric stress, because dilatancy drags ``p``
-            # back down and it lands on the cone at ``q > 0``. The apex return's
-            # own multiplier is the test -- ``dgamma < 0`` means the tip lies
-            # behind the trial state along the flow path, so the smooth surface
-            # is reachable and this point is not an apex case.
-            cand = plastic & (work["p"] > self.apex_pressure(chi_old, k_all))
-            if cand.any():
-                ic = np.flatnonzero(cand)
-                ap = self.apex_return(Fe_tr[ic], chi_old[ic], k_all[ic])
-                take = ap["admissible"]
-                ia = ic[take]
-                apex[ia] = True
-                Ue[ia], Gam_e[ia] = ap["Ue"][take], ap["Gam_e"][take]
-                chi[ia], dg[ia] = ap["chi"][take], ap["dgamma"][take]
-
-        smooth = plastic & ~apex
-        if not smooth.any():
-            tau, nu, *_ = self.stresses(Q, F, Ue, Gam_e)
-            return dict(Ue=Ue, Gam_e=Gam_e, chi=chi, dgamma=dg, tau=tau,
-                        nu=nu, plastic=plastic, apex=apex, iterations=0,
-                        converged=True)
-
-        idx = np.flatnonzero(smooth)
+        idx = np.flatnonzero(plastic)
         Qa, Fa, Fea, Ga, ca = (Q[idx], F[idx], Fe_tr[idx], Gam_tr[idx],
                                chi_old[idx])
         Ua, Gea, cha, dga = Ue[idx], Gam_e[idx], chi[idx], dg[idx]
@@ -458,28 +440,55 @@ class MicropolarDruckerPrager:
             dga = dga + step * dX[:, 19]
 
         if not converged:
-            stuck = np.flatnonzero((p_bar >= tol)
-                                   | (np.abs(f) >= ka * tol))
-            hint = ""
-            if self.alpha_dp > 0.0:
-                apex = self._k_ref / self.alpha_dp
+            # The loop's residuals were evaluated *before* its last update, so
+            # re-evaluate at the iterate actually being reported.
+            r_U, r_G, r_chi, f, work = self.residuals(
+                Qa, Fa, Fea, Ga, ca, Ua, Gea, cha, dga, ka)
+            r = np.concatenate([r_U.reshape(-1, 9), r_G.reshape(-1, 9),
+                                r_chi[:, None], f[:, None]], axis=1)
+            p_bar = np.sqrt(np.einsum("ni,ni->n", r[:, :19], r[:, :19]))
+            bad = (p_bar >= tol) | (np.abs(f) >= ka * tol)
+
+            # Rescue: a point the smooth surface cannot take may be past the
+            # tip, where a return still exists but is not on the cone.
+            rescued = np.zeros(len(idx), dtype=bool)
+            if bad.any() and self.alpha_dp > 0.0:
+                # judge "past the tip" on the *trial* state; the failed iterate
+                # is not a state to draw conclusions from
                 _, _, _, _, w0 = self.residuals(
-                    Qa[stuck], Fa[stuck], Fea[stuck], Ga[stuck], ca[stuck],
-                    np.einsum("nja,njk->nak", Qa[stuck], Fea[stuck]),
-                    Ga[stuck], ca[stuck], np.zeros(len(stuck)), ka[stuck])
-                beyond = int((w0["p"] > apex).sum())
-                if beyond:
-                    hint = (f"; {beyond} of them have a trial pressure beyond "
-                            f"the cone apex at p = k/alpha_DP = {apex:.3e}, "
-                            f"where the smooth Drucker-Prager surface has no "
-                            f"admissible return at all. That is the geometry, "
-                            f"not the solver -- cut the load step, or use a "
-                            f"formulation with an apex return")
-            raise RuntimeError(
-                f"the micropolar return map did not converge in {max_iter} "
-                f"iterations on {len(stuck)} of {len(idx)} points: "
-                f"max ||r|| = {p_bar.max():.3e}, max |f| = "
-                f"{np.abs(f).max():.3e} against k = {self._k_ref:.3e}{hint}")
+                    Qa, Fa, Fea, Ga, ca,
+                    np.einsum("nja,njk->nak", Qa, Fea),
+                    Ga, ca, np.zeros(len(idx)), ka)
+                beyond = bad & (w0["p"] > self.apex_pressure(ca, ka))
+                if beyond.any():
+                    if self.beta_dp <= 0.0 and self.H == 0.0:
+                        raise RuntimeError(
+                            f"{int(beyond.sum())} points failed the smooth "
+                            f"return with a trial pressure beyond the cone "
+                            f"apex, and this material has zero dilatancy, so "
+                            f"no admissible return exists -- the flow rule is "
+                            f"purely deviatoric and cannot produce the volume "
+                            f"change the return needs. Cut the load step, or "
+                            f"give the material a dilation angle or hardening")
+                    ib = np.flatnonzero(beyond)
+                    ap = self.apex_return(Fea[ib], ca[ib], ka[ib])
+                    take = ap["admissible"]
+                    j = ib[take]
+                    Ua[j], Gea[j] = ap["Ue"][take], ap["Gam_e"][take]
+                    cha[j], dga[j] = ap["chi"][take], ap["dgamma"][take]
+                    rescued[j] = True
+
+            left = bad & ~rescued
+            if left.any():
+                stuck = np.flatnonzero(left)
+                raise RuntimeError(
+                    f"the micropolar return map did not converge in "
+                    f"{max_iter} iterations on {len(stuck)} of {len(idx)} "
+                    f"points: max ||r|| = {p_bar[stuck].max():.3e}, max |f| = "
+                    f"{np.abs(f[stuck]).max():.3e} against k = "
+                    f"{self._k_ref:.3e}. Cut the load step")
+            apex[idx[rescued]] = True
+            iterations = max_iter
 
         Ue[idx], Gam_e[idx], chi[idx], dg[idx] = Ua, Gea, cha, dga
         tau, nu, *_ = self.stresses(Q, F, Ue, Gam_e)

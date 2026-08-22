@@ -232,7 +232,7 @@ class ImplicitMPMStepper:
                  body_force=None, particle_force=None, tol: float = 1e-9,
                  energy_tol: float = 1e-16, max_iter: int = 20,
                  linear_solver=None, support_tol: float = 1e-6,
-                 state=None, ghost: float | None = None):
+                 state=None, ghost: float | None = None, crack=None):
         if state is not None:
             raise NotImplementedError(
                 "implicit MPM here is hyperelastic only. A path-dependent "
@@ -258,9 +258,21 @@ class ImplicitMPMStepper:
         self.linear_solver = linear_solver or DirectSolver()
         self.support_tol = float(support_tol)
         self.ghost = None if ghost is None else float(ghost)
+        if crack is not None and grid.dim != 2:
+            raise NotImplementedError(
+                f"crack surfaces are 2-D here; this grid is {grid.dim}-D. The "
+                f"visibility test and the polyline are both planar, and a 3-D "
+                f"crack is a surface rather than a curve -- a different object, "
+                f"not a generalisation of this one.")
+        self.crack = crack
         self.history: list[LoadStepResult] = []
 
+        # Node-major and *dynamic*: splitting the grid along a crack adds
+        # duplicate nodes, so the count is a property of the prepared step
+        # rather than of the grid.
+        self._n_nodes_eff = grid.n_nodes
         self._n_dof = grid.n_nodes * grid.dim
+        self._dup_origin = np.zeros(0, dtype=np.int64)
         self._st = None      # stencil, frozen for the current load step
 
     # ------------------------------------------------------------------
@@ -276,6 +288,20 @@ class ImplicitMPMStepper:
         grid = self.grid
         st = grid.build_stencil(particles.x,
                                 lp=getattr(particles, "lp", None))
+
+        # Split the grid along the crack *before* anything is sized or
+        # accumulated. Every consumer addresses nodes through ``node_id``, so
+        # rewriting it here separates the two faces everywhere at once.
+        self._dup_origin = np.zeros(0, dtype=np.int64)
+        n_nodes = grid.n_nodes
+        if self.crack is not None:
+            from .crack import split_nodes
+            blocked = self.crack.blocked(
+                particles.x[:, :2], grid.node_coordinates()[:, :2], st.node_id)
+            st.node_id, n_nodes, self._dup_origin = split_nodes(
+                st.node_id, blocked, grid.n_nodes)
+        self._n_nodes_eff = n_nodes
+        self._n_dof = n_nodes * grid.dim
         self._st = st
         self._F0 = particles.F.copy()
         self._vol0 = particles.vol0.copy()
@@ -284,8 +310,15 @@ class ImplicitMPMStepper:
 
         # free set: nodes with real particle support. Anything below the
         # threshold has no stiffness and would make K_ff singular.
-        support = np.zeros(grid.n_nodes)
+        support = np.zeros(self._n_nodes_eff)
         np.add.at(support, st.node_id, self._vol0[:, None] * st.w)
+        if self.ghost is not None and self.crack is not None:
+            raise NotImplementedError(
+                "ghost stabilisation and crack splitting both rewrite which "
+                "nodes carry equations, and the penalty is built on *grid* "
+                "node indices that know nothing about duplicates -- it would "
+                "couple the two crack faces back together, which is precisely "
+                "what the split exists to prevent.")
         if self.ghost is None:
             active_node = support > self.support_tol * support.max()
         else:
@@ -305,8 +338,9 @@ class ImplicitMPMStepper:
             active_node &= support > 0.0
         active = np.repeat(active_node, grid.dim)
 
-        dofmap = DOFMap(grid.n_nodes, grid.dim)
+        dofmap = DOFMap(self._n_nodes_eff, grid.dim)
         self._prescribed = np.zeros(self._n_dof)
+        marked = np.zeros(self._n_dof, dtype=bool)
         for bc in self.dirichlet:
             idx, val = bc.dofs(grid)
             if idx.size == 0:
@@ -320,8 +354,22 @@ class ImplicitMPMStepper:
                     "body would be left unrestrained and the solve would "
                     "return the undeformed state without complaining")
             self._prescribed[idx] = val
+            marked[idx] = True
             for i in idx:
                 dofmap.constrain(int(i) // grid.dim, int(i) % grid.dim)
+
+        # A duplicate *is* its parent grid node, seen from the other side of
+        # the crack, so it inherits the parent's constraints. Omitting this
+        # pins one crack face to a boundary and leaves the other free, and the
+        # body then pivots about the crack rather than loading -- a converged
+        # solve of a different problem.
+        d = grid.dim
+        for j, orig in enumerate(self._dup_origin):
+            dup = grid.n_nodes + j
+            for c in range(d):
+                if marked[orig * d + c]:
+                    self._prescribed[dup * d + c] = self._prescribed[orig * d + c]
+                    dofmap.constrain(dup, c)
         constrained = np.zeros(self._n_dof, dtype=bool)
         constrained[dofmap.constrained_dofs] = True
 
@@ -354,7 +402,7 @@ class ImplicitMPMStepper:
         """
         st, grid = self._st, self.grid
         d = grid.dim
-        du_node = du.reshape(grid.n_nodes, d)
+        du_node = du.reshape(self._n_nodes_eff, d)
         dF = np.einsum("pka,pkb->pab", du_node[st.node_id], st.grad_w)
         dF += np.eye(d)
         F = np.einsum("pab,pbc->pac", dF, self._F0)
@@ -372,7 +420,7 @@ class ImplicitMPMStepper:
                        load_factor: float) -> np.ndarray:
         """Nodal external force at ``load_factor``, flat."""
         st, grid = self._st, self.grid
-        f = np.zeros((grid.n_nodes, grid.dim))
+        f = np.zeros((self._n_nodes_eff, grid.dim))
         if self.body_force is not None:
             np.add.at(f, st.node_id,
                       (particles.mass[:, None] * st.w)[:, :, None]
@@ -386,7 +434,7 @@ class ImplicitMPMStepper:
         """``sum_p V_p^0 P b_I``, flat. The residual's only nonlinear part."""
         st, grid = self._st, self.grid
         P, _ = self.material.pk1(self._deformation(du))
-        f = np.zeros((grid.n_nodes, grid.dim))
+        f = np.zeros((self._n_nodes_eff, grid.dim))
         np.add.at(f, st.node_id,
                   np.einsum("p,piB,pkB->pki", self._vol0, P, self._b))
         out = f.ravel()
@@ -494,7 +542,7 @@ class ImplicitMPMStepper:
         """Accept the step: advance F, then positions."""
         st, grid = self._st, self.grid
         particles.F = self._deformation(du)
-        du_node = du.reshape(grid.n_nodes, grid.dim)
+        du_node = du.reshape(self._n_nodes_eff, grid.dim)
         particles.x = particles.x + np.einsum(
             "pk,pka->pa", st.w, du_node[st.node_id])
         if grid.any_periodic:

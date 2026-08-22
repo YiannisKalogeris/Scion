@@ -139,7 +139,8 @@ class MicropolarMPMStepper:
                  particle_force=None, particle_couple=None,
                  tol: float = 1.0e-9, energy_tol: float = 1.0e-16,
                  max_iter: int = 20, linear_solver=None,
-                 support_tol: float = 1.0e-6, ghost=None):
+                 support_tol: float = 1.0e-6, ghost=None,
+                 crack=None):
         if grid.dim != 3:
             raise NotImplementedError(
                 f"micropolar MPM is 3-D only, got a {grid.dim}-D grid. The "
@@ -179,7 +180,20 @@ class MicropolarMPMStepper:
             self.ghost = (float(ghost[0]), float(ghost[1]))
         self.history: list[LoadStepResult] = []
 
+        self.crack = crack
+        if crack is not None and self.ghost is not None:
+            raise NotImplementedError(
+                "ghost stabilisation and crack splitting both rewrite which "
+                "nodes carry equations, and the penalty is built on *grid* "
+                "node indices that know nothing about duplicates -- it would "
+                "couple the two crack faces back together, which is precisely "
+                "what the split exists to prevent.")
+
+        # Node-major and *dynamic*: splitting along a crack adds duplicates, so
+        # the count belongs to the prepared step, not to the grid.
+        self._n_nodes_eff = grid.n_nodes
         self._n_dof = grid.n_nodes * self.n_components
+        self._dup_origin = np.zeros(0, dtype=np.int64)
         self._D = self.elastic.D
         self._Dc = self.elastic.D_curvature
         self._st = None
@@ -202,11 +216,27 @@ class MicropolarMPMStepper:
         grid = self.grid
         st = grid.build_stencil(particles.x,
                                 lp=getattr(particles, "lp", None))
+
+        # Split along the crack first: every consumer addresses nodes through
+        # ``node_id``, so the remap separates the two faces everywhere at once.
+        # The visibility test projects onto xy, which is exact for the
+        # plane-strain prism this is used on -- see ``CrackPath.blocked``.
+        self._dup_origin = np.zeros(0, dtype=np.int64)
+        n_nodes = grid.n_nodes
+        if self.crack is not None:
+            from .crack import split_nodes
+            blocked = self.crack.blocked(
+                particles.x, grid.node_coordinates(), st.node_id)
+            st.node_id, n_nodes, self._dup_origin = split_nodes(
+                st.node_id, blocked, grid.n_nodes)
+        self._n_nodes_eff = n_nodes
+        self._n_dof = n_nodes * self.n_components
+
         self._st = st
         self._grad = st.grad_w.copy()          # advanced every iteration
         self._vol0 = particles.vol0
 
-        support = np.zeros(grid.n_nodes)
+        support = np.zeros(self._n_nodes_eff)
         np.add.at(support, st.node_id, self._vol0[:, None] * st.w)
         if self.ghost is None:
             active_node = support > self.support_tol * support.max()
@@ -227,8 +257,9 @@ class MicropolarMPMStepper:
             active_node &= support > 0.0
         active = np.repeat(active_node, self.n_components)
 
-        dofmap = DOFMap(grid.n_nodes, self.n_components)
+        dofmap = DOFMap(self._n_nodes_eff, self.n_components)
         self._prescribed = np.zeros(self._n_dof)
+        marked = np.zeros(self._n_dof, dtype=bool)
         for bc in self.dirichlet:
             idx, val = bc.dofs(grid, self.n_components)
             if idx.size == 0:
@@ -237,9 +268,22 @@ class MicropolarMPMStepper:
                     "body would be left unrestrained and the solve would "
                     "return the undeformed state without complaining")
             self._prescribed[idx] = val
+            marked[idx] = True
             for i in idx:
                 dofmap.constrain(int(i) // self.n_components,
                                  int(i) % self.n_components)
+
+        # A duplicate *is* its parent node seen from the other crack face, so
+        # it inherits the parent's constraints. Omitting this pins one face and
+        # leaves the other free, and the body pivots about the crack instead of
+        # loading -- a converged solve of a different problem.
+        nc = self.n_components
+        for j, orig in enumerate(self._dup_origin):
+            dup = grid.n_nodes + j
+            for c in range(nc):
+                if marked[orig * nc + c]:
+                    self._prescribed[dup * nc + c] = self._prescribed[orig * nc + c]
+                    dofmap.constrain(dup, c)
         constrained = np.zeros(self._n_dof, dtype=bool)
         constrained[dofmap.constrained_dofs] = True
 
@@ -291,7 +335,7 @@ class MicropolarMPMStepper:
         marked.
         """
         st = self._st
-        nodal = dof.reshape(self.grid.n_nodes, self.n_components)
+        nodal = dof.reshape(self._n_nodes_eff, self.n_components)
         du = nodal[:, :3][st.node_id]           # (n, k, 3)
         dw = nodal[:, 3:][st.node_id]
 
@@ -410,7 +454,7 @@ class MicropolarMPMStepper:
         # rotation DOFs there would have no equation of their own
         axial = np.einsum("irn,prn->pi", _EPS, J_sigma)
 
-        out = np.zeros((grid.n_nodes, self.n_components))
+        out = np.zeros((self._n_nodes_eff, self.n_components))
         np.add.at(out[:, :3], st.node_id, V[:, None, None] * s)
         np.add.at(out[:, 3:], st.node_id,
                   V[:, None, None] * (c + st.w[:, :, None] * axial[:, None, :]))
@@ -425,7 +469,7 @@ class MicropolarMPMStepper:
     def external_force(self, particles: ParticleSet,
                        load_factor: float) -> np.ndarray:
         st, grid = self._st, self.grid
-        out = np.zeros((grid.n_nodes, self.n_components))
+        out = np.zeros((self._n_nodes_eff, self.n_components))
         if self.particle_force is not None:
             np.add.at(out[:, :3], st.node_id,
                       st.w[:, :, None] * self.particle_force[:, None, :])
@@ -848,7 +892,9 @@ class MicropolarMPMStepper:
                     raise ValueError(
                         f"remesh changed the node count from "
                         f"{self.grid.n_nodes} to {grid.n_nodes}; only dx and "
-                        f"origin may move, since the DOF count is fixed")
+                        f"origin may move. This compares *grid* nodes, which "
+                        f"stay fixed even when a crack split adds duplicates "
+                        f"on top of them.")
                 self.grid = grid
             try:
                 res = self.step(particles, lam + inc, inc)

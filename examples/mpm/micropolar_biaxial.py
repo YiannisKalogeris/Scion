@@ -179,8 +179,15 @@ def run(h: float, dilation: float = 10.0, n_steps: int = LOAD_STEPS,
         top = np.flatnonzero(
             np.abs(stepper.grid.node_coordinates()[:, 1] - platen["y"]) < tol)
         force = stepper.internal_force(p)[top * 6 + 1].sum()
+        # The band angle is recorded *per step*, not only at the end. Runs stop
+        # at different strains -- psi = 0 refuses early, and any case can stall
+        # -- and the deformed-frame angle evolves with strain, so comparing two
+        # cases at their respective final states is not like-for-like and the
+        # difference reads as a psi trend when it is partly a strain trend.
+        # With the history, any two runs can be read at a common strain.
+        angle, width, chi_max = band_geometry(p, X)
         curve.append((AXIAL_STRAIN * result.load_factor,
-                      float(force) / (WIDTH * h)))
+                      float(force) / (WIDTH * h), angle, width, chi_max))
 
     t0 = time.time()
     reached = 0.0
@@ -198,88 +205,143 @@ def run(h: float, dilation: float = 10.0, n_steps: int = LOAD_STEPS,
         reached = curve[-1][0] / AXIAL_STRAIN if curve else 0.0
         print(f"    stopped at {reached * AXIAL_STRAIN * 100:.1f}% axial "
               f"strain: {str(exc).split(';')[-1].strip()[:80]}")
+    # columns: strain, macroscopic stress, band angle, band width, chi_max
     return particles, stepper, X, np.array(curve), time.time() - t0, reached
+
+
+def band_orientation(X, chi, smooth: float = 2.0, margin: int = 2,
+                     frac: float = 0.2, stretch=None):
+    """Band inclination from the structure tensor of ``grad chi``.
+
+    Two estimators failed on this problem before this one, and both produced a
+    confident number rather than an obvious error. Both reduced the band to a
+    *centroid* somewhere, which cannot work here: the band is ~24 mm wide in a
+    25 mm quadrant, so it fills the domain, and a centroid then sits mid-width
+    at every height whatever the inclination. Calibrated against a synthetic
+    band of known angle in this same geometry, the ridge estimator reads **70
+    degrees for a 45-degree band** and compresses a 25-degree range into 7 --
+    which is where the recorded "no trend with psi" came from.
+
+    Two traps inside this one:
+
+    * **Select on ``|grad chi|``, not on ``chi``.** A high-``chi`` mask picks
+      the band *core*, which is a plateau where the gradient vanishes, so it
+      selects precisely the cells carrying no orientation information. Measured
+      on the real field: ``chi``-selected swings 14-31 degrees with the
+      threshold, gradient-selected holds to 0.7.
+    * **Return the angle in the frame you mean.** A band direction is a line
+      element, so it pushes forward with ``F``. At 20% axial strain
+      ``lam = (1.29, 0.78)`` and 59.2 degrees in the reference configuration is
+      45.3 in the deformed one. Pass ``stretch`` to get the deformed angle,
+      which is what a reference plotting a deformed sample is quoting.
+
+    Known bias: **low by 2-5 degrees on a strongly curved band**, measured
+    against synthetic bands whose local inclination varies with height. Exact
+    (0.1 degrees) on a straight one.
+    """
+    from scipy.ndimage import gaussian_filter
+
+    nx = len(np.unique(np.round(X[:, 0], 12)))
+    ny = len(np.unique(np.round(X[:, 1], 12)))
+    nz = len(X) // (nx * ny)
+    g = chi.reshape((nx, ny, nz)).mean(axis=2)
+    if g.max() <= 0.0:
+        return float("nan"), np.array([1.0, 0.0])
+    if smooth:
+        g = gaussian_filter(g, smooth, mode="nearest")
+    gx, gy = np.gradient(g)
+    mag = np.hypot(gx, gy)
+    # A uniform field has no gradient anywhere, so ``mag >= frac * 0`` selects
+    # *every* cell, the structure tensor is the zero matrix, and ``eigh``
+    # returns an arbitrary eigenvector -- an invented angle from a field with no
+    # band in it. That is the exact failure the covariance estimator had, and it
+    # has to be refused rather than reported.
+    if mag.max() <= 1.0e-12 * max(g.max(), 1.0e-300):
+        return float("nan"), np.array([1.0, 0.0])
+    w = mag >= frac * mag.max()
+    if margin:
+        w[:margin, :] = w[-margin:, :] = False
+        w[:, :margin] = w[:, -margin:] = False
+    if w.sum() < 8:
+        return float("nan"), np.array([1.0, 0.0])
+
+    v = np.stack([gx[w], gy[w]], axis=1)
+    normal = np.linalg.eigh(v.T @ v)[1][:, -1]
+    d = np.array([-normal[1], normal[0]])
+    if stretch is not None:
+        d = np.asarray(stretch) @ d if np.ndim(stretch) == 2 else \
+            np.array([stretch[0] * d[0], stretch[1] * d[1]])
+        d /= np.linalg.norm(d)
+    return float(np.degrees(np.arctan2(abs(d[1]), abs(d[0])))), d
+
+
+def local_stretch(X, x):
+    """The 2x2 deformation gradient, differenced from the map ``x(X)``.
+
+    A band direction is a line element and pushes forward as ``F d``, so the
+    **full** tensor is needed. Fitting only the diagonal stretches -- which is
+    what ``polyfit`` on each coordinate gives -- silently discards the shear,
+    and on this problem that is not a small correction: at 20% axial strain the
+    band-averaged ``F`` is ``[1.352 -0.217; 0.195 0.769]``, and dropping the
+    off-diagonal terms moves the reported angle by **11 degrees** (45.3 against
+    the correct 56.3), which is larger than the spread between Roscoe and
+    Coulomb that the sweep exists to resolve.
+
+    Averaging over the band rather than the whole sample turns out not to
+    matter here -- measured 56.3 against 56.4 -- so the sample mean is used.
+    That was worth checking rather than assuming, since the reference
+    emphasises how non-uniform the deformation becomes.
+    """
+    nx = len(np.unique(np.round(X[:, 0], 12)))
+    ny = len(np.unique(np.round(X[:, 1], 12)))
+    nz = len(X) // (nx * ny)
+    Xg, xg = X.reshape((nx, ny, nz, 3)), x.reshape((nx, ny, nz, 3))
+    hx = Xg[1, 0, 0, 0] - Xg[0, 0, 0, 0]
+    hy = Xg[0, 1, 0, 1] - Xg[0, 0, 0, 1]
+    F = np.zeros((2, 2))
+    for i in range(2):
+        plane = xg[..., i].mean(axis=2)
+        F[i, 0] = np.gradient(plane, axis=0).mean() / hx
+        F[i, 1] = np.gradient(plane, axis=1).mean() / hy
+    return F
 
 
 def band_geometry(particles, X, n_strips: int = 12):
     """``(angle_deg, thickness_m, chi_max)`` of the localisation zone.
 
-    Measured by **fitting the ridge**, not by the principal axis of the
-    plastic zone's covariance. The covariance estimator was tried first and is
-    wrong here for two separate reasons, each of which produced a confident
-    number:
-
-    * with *no* localisation it returns the **specimen's** aspect ratio -- a
-      25 x 50 quadrant reads a clean 90 degrees, which looks like a vertical
-      band and is a uniformly yielding sample;
-    * with a *broad* localisation it reports near-isotropy and rejects a real
-      band. The band here is ~10 ``l_b`` across a quadrant only ~12 ``l_b``
-      wide, so it genuinely fills most of the domain; measured elongation 1.69
-      for a ridge that is plainly diagonal.
-
-    The ridge fit is immune to both: the sample is cut into horizontal strips,
-    the ``chi``-weighted centroid of each is taken, and a line is fitted through
-    those centroids. A uniform field gives centroids on the vertical centreline
-    and a near-zero slope spread, which is reported rather than dressed up as an
-    angle. Thickness is the ``chi``-weighted spread perpendicular to that line,
-    as ``sqrt(12) sigma`` -- the width a uniform band of that deviation
-    would have.
+    The angle comes from :func:`band_orientation` and is reported in the
+    **deformed** configuration, since that is what the reference plots. The
+    thickness is the ``chi``-weighted spread perpendicular to that direction, as
+    ``sqrt(12) sigma`` -- the width a uniform band of that deviation would have.
+    Width was never the problem here: it reproduced the reference's "roughly
+    twelve multiples of ``l_b``" even with the discredited angle estimator,
+    because a perpendicular spread is insensitive to a few degrees of direction.
     """
     chi = particles.hardening
     if chi.max() <= 0.0:
         return float("nan"), float("nan"), 0.0
 
     pts = particles.x[:, :2]
-    y = pts[:, 1]
-    edges = np.linspace(y.min(), y.max(), n_strips + 1)
-    cy, cx, wt = [], [], []
-    for a, b in zip(edges[:-1], edges[1:]):
-        m = (y >= a) & (y < b)
-        if not m.any() or chi[m].sum() <= 0.0:
-            continue
-        w = chi[m]
-        cx.append(float((w * pts[m, 0]).sum() / w.sum()))
-        cy.append(0.5 * (a + b))
-        wt.append(float(w.sum()))
-    if len(cx) < 4:
+    angle, d = band_orientation(X, chi, stretch=local_stretch(X, particles.x))
+    if not np.isfinite(angle):
         return float("nan"), float("nan"), float(chi.max())
 
-    cx, cy, wt = np.array(cx), np.array(cy), np.array(wt)
-    # The band is *curved* -- the reference measures it "near-horizontal at the
-    # centre of the sample to near-vertical at the edge" and quotes its
-    # inclination "in the main", i.e. at the halfway point. A line fitted
-    # through the whole ridge averages in the steep near-platen portion and
-    # reads 66 degrees where the central inclination is 50. Fit the middle half.
-    keep = ((cy > cy.min() + 0.25 * (cy.max() - cy.min()))
-            & (cy < cy.min() + 0.75 * (cy.max() - cy.min())))
-    if keep.sum() >= 3:
-        cx_fit, cy_fit, wt_fit = cx[keep], cy[keep], wt[keep]
-    else:
-        cx_fit, cy_fit, wt_fit = cx, cy, wt
-    # a uniform field puts every centroid at the same x: no ridge to fit
-    if cx.std() < 0.02 * (pts[:, 0].max() - pts[:, 0].min()):
-        return float("nan"), float("nan"), float(chi.max())
-
-    slope = np.polyfit(cy_fit, cx_fit, 1, w=wt_fit)[0]   # dx/dy along the ridge
-    angle = np.degrees(np.arctan2(1.0, abs(slope)))
-
-    direction = np.array([slope, 1.0])
-    direction /= np.linalg.norm(direction)
-    normal = np.array([-direction[1], direction[0]])
-    centre = np.array([(wt * cx).sum() / wt.sum(), (wt * cy).sum() / wt.sum()])
+    normal = np.array([-d[1], d[0]])
+    centre = np.average(pts, axis=0, weights=chi)
     perp = (pts - centre) @ normal
     sigma = np.sqrt((chi * perp ** 2).sum() / chi.sum())
-    return float(angle), float(np.sqrt(12.0) * sigma), float(chi.max())
+    return angle, float(np.sqrt(12.0) * sigma), float(chi.max())
 
 
 def report(rows) -> None:
     print(f"\n    {'psi':>5} {'h (mm)':>7} {'angle':>7} {'Roscoe':>7} "
           f"{'Coulomb':>8} {'band (mm)':>10} {'band/l_b':>9} {'chi_max':>9} "
-          f"{'sec':>7}")
-    for psi, h, angle, width, chi, dt in rows:
+          f"{'strain':>7} {'sec':>7}")
+    for psi, h, angle, width, chi, dt, reached in rows:
         print(f"    {psi:5.0f} {h * 1e3:7.2f} {angle:7.1f} {45 + psi / 2:7.1f} "
               f"{45 + FRICTION / 2:8.1f} {width * 1e3:10.2f} "
-              f"{width / LENGTH:9.1f} {chi:9.3f} {dt:7.0f}")
+              f"{width / LENGTH:9.1f} {chi:9.3f} "
+              f"{reached * AXIAL_STRAIN * 100:6.1f}% {dt:7.0f}")
 
 
 if __name__ == "__main__":
@@ -301,12 +363,12 @@ if __name__ == "__main__":
     for h, psi in cases:
         particles, stepper, X, curve, dt, reached = run(h, dilation=psi)
         angle, width, chi = band_geometry(particles, X)
-        rows.append((psi, h, angle, width, chi, dt))
+        rows.append((psi, h, angle, width, chi, dt, reached))
     report(rows)
 
     if not quick:
-        angles = [a for _, _, a, _, _, _ in rows]
-        widths = [w / LENGTH for _, _, _, w, _, _ in rows]
+        angles = [a for _, _, a, _, _, _, _ in rows]
+        widths = [w / LENGTH for _, _, _, w, _, _, _ in rows]
         print(f"\n  Reading it")
         print(f"    Band width holds at "
               + "/".join(f"{v:.1f}" for v in widths)
