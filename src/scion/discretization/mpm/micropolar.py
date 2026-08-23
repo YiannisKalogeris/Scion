@@ -196,6 +196,11 @@ class MicropolarMPMStepper:
         self._dup_origin = np.zeros(0, dtype=np.int64)
         self._D = self.elastic.D
         self._Dc = self.elastic.D_curvature
+        #: optional ``(n,)`` degradation g(d) per particle, or None.
+        #: The residual and tangent are both *linear* in the moduli, so a
+        #: scalar multiplier per particle is exact -- no per-particle modulus
+        #: tensors are needed and nothing else in the assembly changes.
+        self.degradation = None
         self._st = None
 
     # ------------------------------------------------------------------
@@ -416,6 +421,9 @@ class MicropolarMPMStepper:
 
         B = np.einsum("abgp,ngp->nab", self._D, Ue - np.eye(3))
         S = np.einsum("abgp,ngp->nab", self._Dc, Ge)
+        if self.degradation is not None:
+            g = np.asarray(self.degradation, dtype=float)[:, None, None]
+            B, S = B * g, S * g
         Fe = np.einsum("nia,nab->nib", Q, Ue)
         tau = np.einsum("nia,nab,njb->nij", Q, B, Fe)
         nu = np.einsum("nia,nab,njb->nij", Q, S, F)
@@ -695,9 +703,19 @@ class MicropolarMPMStepper:
         h, dQdw = d["h"], d["dQdw"]
 
         # how tau and nu respond to their own arguments
-        TU = (np.einsum("pia,abyc,pjb->pijyc", Q, D, Fe)
-              + np.einsum("pia,pac,pjy->pijyc", Q, B, Q))
+        TU_D = np.einsum("pia,abyc,pjb->pijyc", Q, D, Fe)
         NU = np.einsum("pia,abgd,pjb->pijgd", Q, Dc, F)
+        if self.degradation is not None:
+            # ``B`` and ``S`` were degraded in ``constitutive``, so only the
+            # terms written in terms of D and Dc still carry the undegraded
+            # moduli. Scaling those two reproduces g(d) times the whole
+            # per-particle block, which is exact because every term is linear
+            # in the moduli.
+            gp = np.asarray(self.degradation, dtype=float)[sl][
+                :, None, None, None, None]
+            TU_D = TU_D * gp
+            NU = NU * gp
+        TU = TU_D + np.einsum("pia,pac,pjy->pijyc", Q, B, Q)
         QtT = np.einsum("pia,pij->paj", Q, tau)
         TQm = np.einsum("pij,pjb->pib", tau, Q)
         Qtn = np.einsum("pia,pij->paj", Q, nu)
