@@ -1,0 +1,22 @@
+Micropolar phase-field fracture: single-edge notched tension
+  1.0 x 1.0 plate, notch to x = 0.5 at mid-height
+  E = 210.001, nu = 0.2999950475435816, N = 0.35, G_c = 0.0027
+  l = 0.05 (4.0 cells), dx = 0.0125, 2 particles per cell per direction, 16 load steps
+
+  Part 2: the internal-length sweep, everything else fixed
+      l_b/l=0  lambda 0.062  load    0.001376  d_max 1.000  cuts  0     3.0 min elapsed, ~ 44.6 min left
+      l_b/l=0  lambda 0.125  load    0.002707  d_max 1.000  cuts  0     5.7 min elapsed, ~ 39.6 min left
+      l_b/l=0  lambda 0.188  load     0.00394  d_max 1.000  cuts  0     9.3 min elapsed, ~ 40.4 min left
+      l_b/l=0  lambda 0.250  load    0.005026  d_max 1.000  cuts  0    16.4 min elapsed, ~ 49.3 min left
+      l_b/l=0  lambda 0.312  load    0.005841  d_max 1.000  cuts  0    29.9 min elapsed, ~ 65.9 min left
+      l_b/l=0  lambda 0.344  load    0.005977  d_max 1.000  cuts  1    71.4 min elapsed, ~136.3 min left
+      l_b/l=1  lambda 0.062  load    0.001396  d_max 1.000  cuts  0     2.5 min elapsed, ~ 37.5 min left
+      l_b/l=1  lambda 0.125  load    0.002745  d_max 1.000  cuts  0     5.0 min elapsed, ~ 34.9 min left
+      l_b/l=1  lambda 0.188  load    0.003994  d_max 1.000  cuts  0     8.3 min elapsed, ~ 35.9 min left
+      l_b/l=1  lambda 0.250  load     0.00509  d_max 1.000  cuts  0    13.2 min elapsed, ~ 39.7 min left
+      l_b/l=1  lambda 0.312  load     0.00591  d_max 1.000  cuts  0    23.0 min elapsed, ~ 50.6 min left
+      l_b/l=1  lambda 0.375  load    0.006214  d_max 1.000  cuts  0    43.8 min elapsed, ~ 73.0 min left
+      l_b/l=1  lambda 0.438  load    0.004788  d_max 1.000  cuts  0    69.2 min elapsed, ~ 89.0 min left
+      l_b/l=1  lambda 0.500  load   0.0001886  d_max 1.000  cuts  0   100.2 min elapsed, ~100.2 min left
+      l_b/l=1  lambda 0.562  load   0.0002349  d_max 1.000  cuts  0   125.3 min elapsed, ~ 97.5 min left
+      l_b/l=1  lambda 0.625  load   0.0002628  d_max 1.000  cuts  0   150.4 min elapsed, ~ 90.2 min left

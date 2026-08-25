@@ -1,0 +1,29 @@
+Micropolar phase-field fracture: single-edge notched tension
+  1.0 x 1.0 plate, notch to x = 0.5 at mid-height
+  E = 210.001, nu = 0.2999950475435816, N = 0.35, G_c = 0.0027
+  l = 0.1 (4.0 cells), dx = 0.025, 2 particles per cell per direction, 8 load steps
+  --quick: coarse grid, longer phase-field length and fewer load steps.
+  The null survives; the numbers are not converged and must not be quoted.
+
+  Part 1: the classical limit, MPM against FEM
+    peak load   MPM 0.377182   FEM 0.379218   differ 0.54%
+    rising branch: 49.50% worst, 15.43% mean over 7 steps
+
+  Part 2: the internal-length sweep, everything else fixed
+
+    l_b/l      l_b  l_b/dx   peak load  normalised     W_sym     W_rel    W_curv
+  --------------------------------------------------------------------------------
+     0.00   0.0000      --    0.009395      1.0000    0.9998  0.000227         0
+     2.00   0.2000     8.0    0.009535      1.0149    0.9961   0.00134   0.00251
+
+    Peak load varies by 1.49% across the whole sweep, and the curvature
+    share of the driving force never exceeds 2.5e-03. The internal length is not
+    reaching the crack. This is not a deficiency of the formulation: the wryness
+    measures the *gradient* of the microrotation, a notched plate in tension is
+    stretch-dominated, so that gradient is small however l_b compares with the
+    notch, the specimen or l. Compare notched_beam, where the same machinery in
+    bending moves the peak load substantially.
+
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_classical_quick.png
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_load_quick.png
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_damage_quick.png
