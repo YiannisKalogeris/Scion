@@ -104,16 +104,49 @@ def run(l_b_over_h, steps=STEPS, **kw):
 def table(rows):
     base = rows[0]["peak_load"]
     print(f"\n  {'l_b/h':>7} {'l_b':>8} {'l_b/dx':>7} {'peak load':>11} "
-          f"{'normalised':>11} {'W_curv':>9} {'d_notch':>8} {'d_clamp':>8} "
-          f"{'reached':>8}")
-    print("  " + "-" * 88)
+          f"{'normalised':>11} {'W_iso':>8} {'W_rel':>8} {'W_curv':>9} "
+          f"{'d_notch':>8} {'d_clamp':>8} {'reached':>8}")
+    print("  " + "-" * 106)
     for r in rows:
         s = r["shares_at_peak"]
         cells = "--" if r["l_b"] == 0 else f"{r['l_b'] / DX:.1f}"
         print(f"  {r['l_b_over_h']:7.3f} {r['l_b']:8.3f} {cells:>7} "
               f"{r['peak_load']:11.4g} {r['peak_load'] / base:11.4f} "
+              f"{s['symmetric']:8.3f} {s['relative_rotation']:8.3g} "
               f"{s['curvature']:9.3g} {r['d_notch']:8.3f} "
               f"{r['d_clamp']:8.3f} {r['reached']:8.3f}")
+
+
+def save_results(rows, tag=""):
+    """Write the raw sweep to a .npz so figures never require a re-solve.
+
+    Same lesson as ``notched_tension``: a run that emits only PNGs cannot be
+    re-plotted, so every question asked of the figure afterwards costs the whole
+    run again. ``fields`` is per load step, ``x`` is the final particle
+    configuration -- which is the right frame for the last step and only
+    approximately right for the earlier ones, at this example's 0.6% strain.
+    """
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    out = {"l_b_over_h": np.array([r["l_b_over_h"] for r in rows]),
+           "tip_displacement": np.array([TIP_DISPLACEMENT])}
+    for i, r in enumerate(rows):
+        out[f"row{i}_disp"] = np.asarray(r["disp"])
+        out[f"row{i}_load"] = np.asarray(r["load"])
+        # The three driving-force shares, per load step and in a fixed order.
+        # The printed table reports them only at the peak; the paper wants that
+        # row, but a sweep whose shares live only in terminal scrollback is a
+        # sweep that has to be re-run to answer any later question about them.
+        keys = ("symmetric", "relative_rotation", "curvature")
+        out[f"row{i}_shares"] = np.array(
+            [[sh[k] for k in keys] for sh in r["shares"]])
+        out[f"row{i}_reached"] = np.array([r["reached"]])
+        out[f"row{i}_peak_load"] = np.array([r["peak_load"]])
+        out[f"row{i}_peak_step"] = np.array([r["peak_step"]])
+        out[f"row{i}_fields"] = np.asarray(r["fields"])
+        out[f"row{i}_x"] = r["x"]
+    path = RESULTS / f"beam_data{tag}.npz"
+    np.savez_compressed(path, **out)
+    print(f"\n  wrote {path}")
 
 
 def make_figures(rows, tag=""):
@@ -152,6 +185,47 @@ def make_figures(rows, tag=""):
                  fontsize=9, y=1.03)
     fig.colorbar(s, ax=axes[0], shrink=0.85, label="$d$")
     p = RESULTS / f"beam_damage{tag}.png"
+    fig.savefig(p, dpi=180, bbox_inches="tight"); plt.close(fig)
+    print(f"  wrote {p}")
+
+    # A crack-evolution sequence for ONE internal length, which is the figure
+    # that carries information. A damage snapshot compared ACROSS l_b does not,
+    # and the reason is measured rather than asserted -- there is no frame in
+    # which the rows differ usefully:
+    #
+    #   common lambda : the rows are at different stages of life, because a
+    #                   stiffer beam reaches its peak at a SMALLER displacement
+    #                   (measured, l_b/h = 0.5 peaks at lambda 0.333 against
+    #                   0.833 for l_b = 0), so the strongest beam is the one
+    #                   that looks most broken -- backwards;
+    #   own peak      : every row has barely propagated, crack tip at y = 0.145
+    #                   against 0.136 on a seeded notch at 0.126 of a depth 0.4;
+    #   own final     : every row is fully separated.
+    #
+    # That is not a defect of the example. l_b does not change where the crack
+    # goes -- the notch and the bending field fix that -- nor how wide it is,
+    # which l sets. It changes the load the beam carries, and that belongs to
+    # the load-displacement figure and the table.
+    r = rows[-1]
+    # Panels at the first step, the peak, the first step past it and the end
+    # -- not evenly spaced. The crack runs inside a single increment (measured
+    # at l_b/h = 0.5: F = 10.5 at lambda 0.500, 0.061 at 0.583), so an even
+    # spacing steps straight over the one state worth showing.
+    last = len(r["fields"]) - 1
+    k_pk = int(r["peak_step"])
+    ks = np.unique([0, k_pk, min(k_pk + 1, last), last])
+    fig, axes = plt.subplots(1, len(ks), figsize=(3.1 * len(ks), 2.4),
+                             squeeze=False)
+    for a, k in zip(axes[0], ks):
+        s = a.scatter(r["x"][:, 0], r["x"][:, 1], c=r["fields"][k], s=3,
+                      cmap="inferno", vmin=0.0, vmax=1.0)
+        a.set_aspect("equal"); a.set_xticks([]); a.set_yticks([])
+        a.set_title(rf"$\lambda = {r['disp'][k]:.3f}$, "
+                    rf"$F = {abs(r['load'][k]):.3g}$", fontsize=8)
+    fig.suptitle(rf"crack evolution at $\ell_b/h = {r['l_b_over_h']:g}$",
+                 fontsize=9, y=1.06)
+    fig.colorbar(s, ax=axes[0], shrink=0.85, label="$d$")
+    p = RESULTS / f"beam_damage{tag}_sequence.png"
     fig.savefig(p, dpi=180, bbox_inches="tight"); plt.close(fig)
     print(f"  wrote {p}")
 
@@ -197,6 +271,7 @@ def main(quick=False):
               f"a property of the support, not of the notched section, and\n"
               f"    must not be reported. Reduce l relative to the depth.")
 
+    save_results(rows, tag="_quick" if quick else "")
     make_figures(rows, tag="_quick" if quick else "")
     return rows
 

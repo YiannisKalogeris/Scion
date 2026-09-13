@@ -132,7 +132,8 @@ def make_problem(grid, parts, *, E, nu, N, l_b, gc, ell_pf, bcs,
 
 
 def run_load_path(pf, stepper, parts, react_nodes, comp, n_steps,
-                  min_fraction=1.0 / 64.0, growth=1.5, progress=None):
+                  min_fraction=1.0 / 64.0, growth=1.5, progress=None,
+                  stop_past_peak=None):
     """Step to the full prescribed displacement, recording the load path.
 
     Adaptive, and it has to be. Past the peak load the crack releases more
@@ -158,7 +159,7 @@ def run_load_path(pf, stepper, parts, react_nodes, comp, n_steps,
     """
     disp, load, dmax, shares, fields = [], [], [], [], []
     lam, increment, floor = 0.0, 1.0 / n_steps, min_fraction / n_steps
-    cutbacks, t0 = 0, time.time()
+    cutbacks, t0, past_peak = 0, time.time(), False
     with quiet():
         while lam < 1.0 - 1e-12:
             step = min(increment, 1.0 - lam)
@@ -187,17 +188,36 @@ def run_load_path(pf, stepper, parts, react_nodes, comp, n_steps,
             # look like one that resisted cracking.
             fields.append(pf.tables.interpolate(pf.d).copy())
             increment = min(increment * growth, 1.0 / n_steps)
+            # Optional early stop, once the load has fallen clear of its own
+            # maximum. Everything reported *at the peak* -- the peak load
+            # itself and the three driving-force shares -- is then already
+            # determined, and what is skipped is the post-peak branch, which is
+            # most of the cost because that is where the crack actually runs.
+            #
+            # The test is placed after the increment update and changes no
+            # increment before it, so the state at every recorded step is
+            # bit-identical to the same run without this argument. That is the
+            # whole point: a cheaper run that returned slightly different
+            # numbers would not be a substitute for the full one.
+            if (stop_past_peak is not None and len(load) >= 3
+                    and abs(load[-1]) < stop_past_peak * max(abs(v)
+                                                             for v in load)):
+                past_peak = True
             if progress:
                 el = time.time() - t0
                 print(f"      {progress}  lambda {lam:5.3f}  "
                       f"load {load[-1]:11.4g}  d_max {dmax[-1]:5.3f}  "
                       f"cuts {cutbacks:2d}  {el / 60:6.1f} min elapsed, "
                       f"~{el * (1.0 - lam) / max(lam, 1e-9) / 60:5.1f} min "
-                      f"left", flush=True)
+                      f"left{'  [past peak, stopping]' if past_peak else ''}",
+                      flush=True)
+            if past_peak:
+                break
     if not disp:
         raise RuntimeError("no load step converged; the problem is not "
                            "solvable as posed, not merely badly stepped")
     return {"disp": np.array(disp), "load": np.array(load),
             "max_damage": np.array(dmax), "shares": shares,
             "reached": lam, "cutbacks": cutbacks, "fields": fields,
+            "stopped_past_peak": past_peak,
             "seconds": time.time() - t0}

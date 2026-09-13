@@ -15,3 +15,8 @@ target/
 
 # staging area for code being merged into src/
 _incoming/
+
+# solver output re-read by the plotting scripts, not source. tension_data.npz
+# is 20 MB; it exists so a three-hour run can be re-plotted without re-running,
+# which is worth having on disk and not in the history.
+*.npz

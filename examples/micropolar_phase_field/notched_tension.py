@@ -3,6 +3,16 @@ size effect.
 
     python -m examples.micropolar_phase_field.notched_tension
     python -m examples.micropolar_phase_field.notched_tension --quick
+    python -m examples.micropolar_phase_field.notched_tension --no-fem
+    python -m examples.micropolar_phase_field.notched_tension --to-peak
+
+``--to-peak`` stops each row once its load has fallen to 90% of its own
+maximum. Everything reported at the peak -- the peak load and the three
+driving-force shares -- is unchanged, because the stop is tested after the
+increment update and so alters no step before it; what is skipped is the
+post-peak branch, which is most of the cost. Use it to recover the table from a
+sweep whose figures are already in hand. It writes under its own ``_peak`` tag
+so it cannot overwrite a completed run.
 
 Two parts, in the order they are argued in the paper.
 
@@ -13,9 +23,9 @@ of the damage problem is sound before the internal length is switched on;
 Kakouris & Triantafyllou (IJNME 2017, Section 5.1) make the same comparison and
 report that the two are practically indistinguishable.
 
-**The absence of a size effect.** The internal length is then swept over more
-than an order of magnitude with the geometry, the mesh, the phase-field length
-and ``G_c`` held fixed. The result is a *null*, and it is the point of the
+**The absence of a size effect.** The internal length is then swept over a
+fourfold range -- ``l_b/l`` of 1, 2 and 4, plus the limit ``l_b = 0`` -- with
+the geometry, the mesh, the phase-field length and ``G_c`` held fixed. The result is a *null*, and it is the point of the
 example rather than a disappointment: a notched plate in tension is
 stretch-dominated, so the microrotation field is nearly uniform, the wryness is
 small however ``l_b`` compares with the notch or the specimen, and the internal
@@ -241,11 +251,30 @@ def build(l_b, ell_pf=ELL_PF, dx=DX, ppc=PPC, u_top=None):
     # converging at the moment of failure, which reads exactly like a physical
     # limit and is not one. It also made parts 1 and 2 different boundary value
     # problems, so the classical comparison did not licence the sweep.
+    #
+    # The elongation is split symmetrically between the two edges rather than
+    # clamping one and driving the other. In the continuum the two differ by a
+    # rigid translation and nothing else; on a *fixed* background grid they do
+    # not. This solve is updated-Lagrangian, so the particles advect and the
+    # stencil is rebuilt against the grid every step -- and a body that drifts
+    # relative to the grid has a weight operator that no longer commutes with
+    # the mirror y -> SIDE - y. Measured with no solve at all: the commutation
+    # error is 1.7e-14 at zero drift and grows linearly, reaching 0.42 at half
+    # a cell. Clamped-and-driven, that seeds an asymmetry the marginally stable
+    # mode-I crack path amplifies -- the damage field goes from 4e-11 at the
+    # first step to 1.4e-01 once the crack runs, and the crack leaves the
+    # symmetry plane by 6% of the height. Driven symmetrically the same elastic
+    # solve is mirror symmetric to 1e-16.
+    #
+    # The classical comparison row does not need this: PhaseFieldMPMProblem is
+    # small strain and never advects its particles, so its weights stay
+    # mirror-exact for the whole run. That difference, not the micropolar
+    # formulation, is why its crack was the only straight one.
     bcs = [
         GridDirichlet(lambda c: c[:, 1] < 1e-9,
-                      np.array([0.0, 0.0, nan, nan, nan, nan])),
+                      np.array([0.0, -0.5 * u_top, nan, nan, nan, nan])),
         GridDirichlet(lambda c: np.abs(c[:, 1] - SIDE) < 1e-9,
-                      np.array([0.0, u_top, nan, nan, nan, nan])),
+                      np.array([0.0, 0.5 * u_top, nan, nan, nan, nan])),
         plane_strain_bc(),
     ]
     pf, stepper = make_problem(grid, parts, E=E_MOD, nu=NU, N=N_COUPLING,
@@ -259,12 +288,13 @@ def build(l_b, ell_pf=ELL_PF, dx=DX, ppc=PPC, u_top=None):
     return pf, stepper, parts, top
 
 
-def run(l_b_over_l, ell_pf=ELL_PF, steps=STEPS, **kw):
+def run(l_b_over_l, ell_pf=ELL_PF, steps=STEPS, to_peak=False, **kw):
     l_b = l_b_over_l * ell_pf
     u_top = OVERSHOOT * critical_displacement(ell_pf)
     pf, stepper, parts, top = build(l_b, ell_pf=ell_pf, u_top=u_top, **kw)
     out = run_load_path(pf, stepper, parts, top, 1, steps,
-                        progress=f'l_b/l={l_b_over_l:g}')
+                        progress=f'l_b/l={l_b_over_l:g}',
+                        stop_past_peak=0.9 if to_peak else None)
     peak = int(np.argmax(np.abs(out["load"])))
     out.update(l_b=l_b, l_b_over_l=l_b_over_l, u_top=u_top,
                peak_load=abs(out["load"][peak]), peak_step=peak,
@@ -308,6 +338,16 @@ def save_results(rows, tag=""):
         out[f"{tagi}_load"] = r["load"]
         out[f"{tagi}_reached"] = np.array([r["reached"]])
         out[f"{tagi}_peak"] = np.array([r["peak_load"]])
+        out[f"{tagi}_peak_step"] = np.array([r.get("peak_step", -1)])
+        # The three driving-force shares, per load step and in a fixed order.
+        # These are what the paper's sweep table reports, and leaving them out
+        # once meant a completed run whose table existed only in the terminal
+        # scrollback -- the figures could be redrawn from the .npz and the
+        # table could not.
+        if "shares" in r:
+            keys = ("symmetric", "relative_rotation", "curvature")
+            out[f"{tagi}_shares"] = np.array(
+                [[sh[k] for k in keys] for sh in r["shares"]])
         if "fields" in r:
             out[f"{tagi}_fields"] = np.asarray(r["fields"])
             out[f"{tagi}_x"] = r["x"]
@@ -403,7 +443,7 @@ def make_figures(rows, classical, tag=""):
     print(f"  wrote {p}")
 
 
-def main(quick=False, skip_fem=False):
+def main(quick=False, skip_fem=False, to_peak=False):
     dx, ell, steps, sweep = DX, ELL_PF, STEPS, SWEEP
     if quick:
         dx, ell, steps, sweep = QUICK_DX, QUICK_ELL, QUICK_STEPS, QUICK_SWEEP
@@ -449,19 +489,32 @@ def main(quick=False, skip_fem=False):
     thickness = NZ * dx
     rows = []
     for r in sweep:
-        o = run(r, ell_pf=ell, dx=dx, steps=steps)
+        o = run(r, ell_pf=ell, dx=dx, steps=steps, to_peak=to_peak)
         o["load"] = o["load"] / thickness      # to unit thickness
         o["peak_load"] = o["peak_load"] / thickness
         rows.append(o)
     rows = [ref] + rows
     table(rows, dx)
 
-    short = [r for r in rows if r["reached"] < 0.999]
+    # A row that stopped because it was ASKED to, once past its own peak, is
+    # not a truncated run: everything reported here is evaluated at the peak,
+    # which it reached. A row that stopped because it stopped converging is a
+    # different thing entirely, and the two must not print the same warning.
+    short = [r for r in rows if r["reached"] < 0.999
+             and not r.get("stopped_past_peak")]
+    if to_peak:
+        n = sum(1 for r in rows if r.get("stopped_past_peak"))
+        print(f"\n    --to-peak: {n} of {len(rows)} rows stopped once the load "
+              f"had fallen to 90% of\n    their own maximum. The peak load and "
+              f"the three shares are evaluated at the\n    peak, so they are "
+              f"unaffected; the post-peak branch and the damage figures\n"
+              f"    are not available from this run.")
     if short:
         print(f"\n    WARNING: {len(short)} of {len(rows)} rows stopped before "
-              f"the end of the load path.\n    Their 'peak load' is the last "
-              f"converged point, not a peak, and the sweep below\n    compares "
-              f"a truncated path against a complete one. Do not report it.")
+              f"the end of the load path\n    without reaching a peak. Their "
+              f"'peak load' is the last converged point, not\n    a peak, and "
+              f"the sweep below compares a truncated path against a complete\n"
+              f"    one. Do not report it.")
 
     peaks = np.array([r["peak_load"] for r in rows])
     curv = max(r["shares_at_peak"]["curvature"] for r in rows)
@@ -476,10 +529,23 @@ def main(quick=False, skip_fem=False):
           f"specimen or l. Compare notched_beam, where the same machinery in\n"
           f"    bending moves the peak load substantially.")
 
-    save_results(rows, tag="_quick" if quick else "")
-    make_figures(rows, classical, tag="_quick" if quick else "")
+    # A --to-peak run writes under its own tag. Without that it would
+    # overwrite the .npz and the figures of a COMPLETED sweep with truncated
+    # ones -- destroying, to save a few hours, exactly the artefacts those
+    # hours were spent producing.
+    tag = ("_quick" if quick else "") + ("_peak" if to_peak else "")
+    save_results(rows, tag=tag)
+    make_figures(rows, classical, tag=tag)
+    # ...and the same panels at each row's own final state. The common-load-
+    # level figure above is the honest side-by-side comparison; this one shows
+    # each crack as it actually ended, which is what a reader wants to see when
+    # one row stops early. Driven from the .npz rather than reimplemented, so
+    # the two can never disagree about what was plotted.
+    from .replot_tension import main as replot
+    replot(tag)
     return rows, classical
 
 
 if __name__ == "__main__":
-    main(quick="--quick" in sys.argv, skip_fem="--no-fem" in sys.argv)
+    main(quick="--quick" in sys.argv, skip_fem="--no-fem" in sys.argv,
+         to_peak="--to-peak" in sys.argv)
