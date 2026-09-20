@@ -1,0 +1,99 @@
+=== 1. elastic shares ===
+Mon Sep 14 13:26:49 EEST 2026
+Unnotched elastic cantilever: composition of the stored energy
+  span 1.0 x depth 0.4, E = 1e+07, nu = 0.25, N = 0.5
+  dx = 0.01, l = 0.04 (phase field built but never solved)
+
+    l_b/h      l_b     W_iso      W_rel     W_curv
+  ------------------------------------------------
+    0.000    0.000    0.9995  0.0004854          0
+    0.250    0.100    0.3397     0.0567     0.6036
+    0.375    0.150    0.2230     0.1271     0.6499
+    0.500    0.200    0.1800     0.2078     0.6122
+
+  Compare the last column against the W_curv column of notched_beam's
+  table. They are the same decomposition on different states: undamaged
+  and unnotched here, mid-crack there.
+=== 2. tension quick to-peak ===
+Mon Sep 14 13:33:28 EEST 2026
+Micropolar phase-field fracture: single-edge notched tension
+  1.0 x 1.0 plate, notch to x = 0.5 at mid-height
+  E = 210.001, nu = 0.2999950475435816, N = 0.35, G_c = 0.0027
+  l = 0.1 (4.0 cells), dx = 0.025, 2 particles per cell per direction, 8 load steps
+  --quick: coarse grid, longer phase-field length and fewer load steps.
+  The null survives; the numbers are not converged and must not be quoted.
+
+  Part 2: the internal-length sweep, everything else fixed
+
+  (row 0 is the CLASSICAL solve, per unit thickness; the micropolar rows are
+   scaled to the same thickness so the peak loads are directly comparable)
+
+    l_b/l      l_b  l_b/dx   peak load  normalised     W_rel    W_curv  reached  cuts
+  ----------------------------------------------------------------------------------
+   class.   0.0000      --      0.3742      1.0000         0         0    1.000     0
+     0.00   0.0000      --      0.3705      0.9900  0.000217         0    0.875     0
+     2.00   0.2000     8.0      0.3772      1.0078   0.00157   0.00158    0.875     0
+
+    --to-peak: 2 of 3 rows stopped once the load had fallen to 90% of
+    their own maximum. The peak load and the three shares are evaluated at the
+    peak, so they are unaffected; the post-peak branch and the damage figures
+    are not available from this run.
+
+    Peak load varies by 1.80% across the whole sweep, and the curvature
+    share of the driving force never exceeds 1.6e-03. The internal length is not
+    reaching the crack. This is not a deficiency of the formulation: the wryness
+    measures the *gradient* of the microrotation, a notched plate in tension is
+    stretch-dominated, so that gradient is small however l_b compares with the
+    notch, the specimen or l. Compare notched_beam, where the same machinery in
+    bending moves the peak load substantially.
+
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_data_quick_peak.npz  (1.1 MB)
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_load_quick_peak.png
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_damage_quick_peak.png
+wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_damage_quick_peak_final.png
+TENSION (--quick --to-peak)
+Traceback (most recent call last):
+  File "/Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/postfix/compare.py", line 36, in <module>
+    if "tension" in sys.argv: tension()
+                              ^^^^^^^^^
+  File "/Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/postfix/compare.py", line 27, in tension
+    la, lb = np.abs(a[f"{t}_load"]), np.abs(b[f"{t}_load"])
+                    ~^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/site-packages/numpy/lib/npyio.py", line 263, in __getitem__
+    raise KeyError(f"{key} is not a file in the archive")
+KeyError: 'lb0__load is not a file in the archive'
+=== 3. production beam sweep ===
+Mon Sep 14 14:01:01 EEST 2026
+Micropolar phase-field fracture: notched beam in bending
+  span 1.0 x depth 0.4, notch at x = 0.35 of depth 0.12
+  E = 1e+07, nu = 0.25, N = 0.5, G_c = 5.0
+  l = 0.04 (4.0 cells), dx = 0.01, 2 particles per cell per direction, 12 load steps
+
+    l_b/h      l_b  l_b/dx   peak load  normalised    W_iso    W_rel    W_curv  d_notch  d_clamp  reached
+  ----------------------------------------------------------------------------------------------------------
+    0.000    0.000      --       2.948      1.0000    0.999 0.000996         0    0.999    0.078    1.000
+    0.250    0.100    10.0       6.342      2.1514    0.766  0.00973     0.224    0.999    0.133    1.000
+    0.375    0.150    15.0       8.552      2.9014    0.615   0.0237     0.361    0.999    0.161    1.000
+    0.500    0.200    20.0        10.5      3.5633    0.512    0.042     0.446    0.999    0.179    1.000
+
+    Geometry, mesh, l and G_c are identical across every row, so a classical model
+    -- having no length of its own -- returns one curve for all of them. Here the peak
+    load changes by 3.56x, and the curvature share of the damage driving force
+    rises from 0.0e+00 to 0.446: the couple stress carries load the
+    classical beam has to shed into damage.
+    Monotone in l_b: True. Two points could be a coincidence of parameters;
+    a monotone sweep is the statement that l_b is what is doing the work.
+
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/beam_data.npz
+
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/beam_load.png
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/beam_damage.png
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/beam_damage_sequence.png
+BEAM (production)
+   l_b/h  peak pre peak post   dpeak %  W_rel pre      post W_curv pre    post  curv 1st step pre/post
+   0.000    2.9476    2.9476   -0.0000  0.0009956 0.0009956     0.0000  0.0000      0.0000/0.0000
+   0.250    6.3415    6.3416   +0.0008   0.009717  0.009727     0.2255  0.2244      0.2335/0.2325
+   0.375    8.5522    8.5522   +0.0005    0.02362   0.02366     0.3623  0.3610      0.3653/0.3642
+   0.500   10.4994   10.5032   +0.0360    0.04188   0.04201     0.4474  0.4458      0.4471/0.4460
+=== done ===
+Mon Sep 14 17:59:52 EEST 2026

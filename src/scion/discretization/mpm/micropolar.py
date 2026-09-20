@@ -201,6 +201,14 @@ class MicropolarMPMStepper:
         #: scalar multiplier per particle is exact -- no per-particle modulus
         #: tensors are needed and nothing else in the assembly changes.
         self.degradation = None
+        #: map applied to the rotation-increment gradient in the wryness update:
+        #: ``"exact"`` (the spatial tangent map ``H``, the default and the only
+        #: correct choice), ``"identity"`` (``H = I``, the first-order shortcut)
+        #: or ``"transpose"`` (``H^T``, the body map the reference's text
+        #: implies). The last two exist solely to *measure* what the exact map
+        #: buys; nothing else in the stepper changes with this setting, since
+        #: ``H -> I`` as the increment vanishes and the tangent never sees it.
+        self.wryness_map = "exact"
         self._st = None
 
     # ------------------------------------------------------------------
@@ -349,6 +357,16 @@ class MicropolarMPMStepper:
         grad_du = np.einsum("pka,pkb->pab", du, self._grad)
         grad_dw = np.einsum("pka,pkb->pab", dw, self._grad)
 
+        # The wryness increment needs the MATERIAL gradient of the rotation
+        # increment, dphi/dX = (dphi/dx_k) F_k, formed here while both factors
+        # still belong to the start of the increment. Pairing the old spatial
+        # gradient with the *updated* F below was a real bug: first order in the
+        # increment whenever the body moves, invisible to every check at zero
+        # increment and to every test with F = I. Measured with a 0.9-rad rigid
+        # rotation: 84.6% wrong in one step, 5.5% in sixteen; formed here, exact
+        # to 1e-15 at any step count.
+        grad_dw_X = np.einsum("pjn,pnt->pjt", grad_dw, particles.F)
+
         dF = np.eye(3) + grad_du
         detdF = sla.det(dF)
         if (detdF <= 0.0).any():
@@ -370,8 +388,17 @@ class MicropolarMPMStepper:
         # wryness accumulates through the exponential map's differential; H = I
         # is correct to first order and makes the answer depend on the number of
         # load steps
+        if self.wryness_map == "exact":
+            H = spin_map(dw_p)
+        elif self.wryness_map == "identity":
+            H = np.broadcast_to(np.eye(3), (len(dw_p), 3, 3))
+        elif self.wryness_map == "transpose":
+            H = spin_map(dw_p).transpose(0, 2, 1)
+        else:
+            raise ValueError(f"wryness_map must be 'exact', 'identity' or "
+                             f"'transpose', not {self.wryness_map!r}")
         particles.wryness = particles.wryness + np.einsum(
-            "pjg,pjk,pkn,pnt->pgt", Q, spin_map(dw_p), grad_dw, particles.F)
+            "pjg,pjk,pkt->pgt", Q, H, grad_dw_X)
 
         # the ghost penalty acts on the *increment over the load step*, because
         # J is rebuilt each step from the current particle positions. Tracking

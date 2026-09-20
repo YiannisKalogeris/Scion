@@ -1,0 +1,76 @@
+Micropolar phase-field fracture: single-edge notched tension
+  1.0 x 1.0 plate, notch to x = 0.5 at mid-height
+  E = 210.001, nu = 0.2999950475435816, N = 0.35, G_c = 0.0027
+  l = 0.05 (4.0 cells), dx = 0.0125, 2 particles per cell per direction, 16 load steps
+
+  Part 2: the internal-length sweep, everything else fixed
+    classical baseline: peak 0.51387 per unit thickness, reached lambda = 1.000
+      l_b/l=0  lambda 0.062  load    0.001035  d_max 1.000  cuts  0     2.4 min elapsed, ~ 35.3 min left
+      l_b/l=0  lambda 0.125  load    0.002052  d_max 1.000  cuts  0     4.6 min elapsed, ~ 32.5 min left
+      l_b/l=0  lambda 0.188  load    0.003029  d_max 1.000  cuts  0     7.7 min elapsed, ~ 33.3 min left
+      l_b/l=0  lambda 0.250  load    0.003943  d_max 1.000  cuts  0    10.7 min elapsed, ~ 32.2 min left
+      l_b/l=0  lambda 0.312  load    0.004776  d_max 1.000  cuts  0    14.6 min elapsed, ~ 32.0 min left
+      l_b/l=0  lambda 0.375  load    0.005503  d_max 1.000  cuts  0    20.1 min elapsed, ~ 33.5 min left
+      l_b/l=0  lambda 0.438  load    0.006095  d_max 1.000  cuts  0    28.8 min elapsed, ~ 37.1 min left
+      l_b/l=0  lambda 0.500  load    0.006439  d_max 1.000  cuts  0    56.9 min elapsed, ~ 56.9 min left
+      l_b/l=0  lambda 0.562  load    0.005351  d_max 1.000  cuts  0    86.8 min elapsed, ~ 67.5 min left  [past peak, stopping]
+      l_b/l=1  lambda 0.062  load     0.00105  d_max 1.000  cuts  0     2.0 min elapsed, ~ 30.7 min left
+      l_b/l=1  lambda 0.125  load    0.002081  d_max 1.000  cuts  0     4.1 min elapsed, ~ 28.6 min left
+      l_b/l=1  lambda 0.188  load    0.003071  d_max 1.000  cuts  0     6.8 min elapsed, ~ 29.5 min left
+      l_b/l=1  lambda 0.250  load    0.003997  d_max 1.000  cuts  0     9.6 min elapsed, ~ 28.7 min left
+      l_b/l=1  lambda 0.312  load    0.004837  d_max 1.000  cuts  0    13.0 min elapsed, ~ 28.6 min left
+      l_b/l=1  lambda 0.375  load     0.00557  d_max 1.000  cuts  0    17.9 min elapsed, ~ 29.8 min left
+      l_b/l=1  lambda 0.438  load    0.006162  d_max 1.000  cuts  0    25.4 min elapsed, ~ 32.7 min left
+      l_b/l=1  lambda 0.500  load    0.006507  d_max 1.000  cuts  0    43.3 min elapsed, ~ 43.3 min left
+      l_b/l=1  lambda 0.562  load    0.005446  d_max 1.000  cuts  0    63.8 min elapsed, ~ 49.6 min left  [past peak, stopping]
+      l_b/l=2  lambda 0.062  load    0.001058  d_max 1.000  cuts  0     2.1 min elapsed, ~ 31.0 min left
+      l_b/l=2  lambda 0.125  load    0.002096  d_max 1.000  cuts  0     4.1 min elapsed, ~ 28.9 min left
+      l_b/l=2  lambda 0.188  load    0.003093  d_max 1.000  cuts  0     6.9 min elapsed, ~ 29.8 min left
+      l_b/l=2  lambda 0.250  load    0.004024  d_max 1.000  cuts  0     9.6 min elapsed, ~ 28.9 min left
+      l_b/l=2  lambda 0.312  load     0.00487  d_max 1.000  cuts  0    13.1 min elapsed, ~ 28.8 min left
+      l_b/l=2  lambda 0.375  load    0.005607  d_max 1.000  cuts  0    17.9 min elapsed, ~ 29.8 min left
+      l_b/l=2  lambda 0.438  load    0.006202  d_max 1.000  cuts  0    25.4 min elapsed, ~ 32.6 min left
+      l_b/l=2  lambda 0.500  load     0.00655  d_max 1.000  cuts  0    42.4 min elapsed, ~ 42.4 min left
+      l_b/l=2  lambda 0.562  load    0.005499  d_max 1.000  cuts  0    62.9 min elapsed, ~ 48.9 min left  [past peak, stopping]
+      l_b/l=4  lambda 0.062  load    0.001064  d_max 1.000  cuts  0     2.1 min elapsed, ~ 30.9 min left
+      l_b/l=4  lambda 0.125  load    0.002108  d_max 1.000  cuts  0     4.1 min elapsed, ~ 28.7 min left
+      l_b/l=4  lambda 0.188  load     0.00311  d_max 1.000  cuts  0     6.8 min elapsed, ~ 29.6 min left
+      l_b/l=4  lambda 0.250  load    0.004047  d_max 1.000  cuts  0     9.6 min elapsed, ~ 28.7 min left
+      l_b/l=4  lambda 0.312  load    0.004897  d_max 1.000  cuts  0    13.0 min elapsed, ~ 28.6 min left
+      l_b/l=4  lambda 0.375  load    0.005637  d_max 1.000  cuts  0    17.8 min elapsed, ~ 29.6 min left
+      l_b/l=4  lambda 0.438  load    0.006235  d_max 1.000  cuts  0    24.7 min elapsed, ~ 31.7 min left
+      l_b/l=4  lambda 0.500  load    0.006586  d_max 1.000  cuts  0    41.8 min elapsed, ~ 41.8 min left
+      l_b/l=4  lambda 0.562  load    0.005543  d_max 1.000  cuts  0    85.3 min elapsed, ~ 66.3 min left  [past peak, stopping]
+
+  (row 0 is the CLASSICAL solve, per unit thickness; the micropolar rows are
+   scaled to the same thickness so the peak loads are directly comparable)
+
+    l_b/l      l_b  l_b/dx   peak load  normalised     W_rel    W_curv  reached  cuts
+  ----------------------------------------------------------------------------------
+   class.   0.0000      --      0.5139      1.0000         0         0    1.000     0
+     0.00   0.0000      --      0.5151      1.0024  7.16e-05         0    0.562     0
+     1.00   0.0500     4.0      0.5206      1.0131  0.000404   0.00107    0.562     0
+     2.00   0.1000     8.0       0.524      1.0197  0.000639   0.00165    0.562     0
+     4.00   0.2000    16.0      0.5269      1.0254  0.000854    0.0021    0.562     0
+
+    --to-peak: 4 of 5 rows stopped once the load had fallen to 90% of
+    their own maximum. The peak load and the three shares are evaluated at the
+    peak, so they are unaffected; the post-peak branch and the damage figures
+    are not available from this run.
+
+    Peak load varies by 2.54% across the whole sweep, and the curvature
+    share of the driving force never exceeds 2.1e-03. The internal length is not
+    reaching the crack. This is not a deficiency of the formulation: the wryness
+    measures the *gradient* of the microrotation, a notched plate in tension is
+    stretch-dominated, so that gradient is small however l_b compares with the
+    notch, the specimen or l. Compare notched_beam, where the same machinery in
+    bending moves the peak load substantially.
+
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_data_peak.npz  (10.9 MB)
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_load_peak.png
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_damage_peak.png
+wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_damage_peak_final.png
+  note: micropolar, $\ell_b/\ell = 0$ stopped at lambda = 0.562, not 1.000 -- its panel is not a completed crack
+  note: micropolar, $\ell_b/\ell = 1$ stopped at lambda = 0.562, not 1.000 -- its panel is not a completed crack
+  note: micropolar, $\ell_b/\ell = 2$ stopped at lambda = 0.562, not 1.000 -- its panel is not a completed crack
+  note: micropolar, $\ell_b/\ell = 4$ stopped at lambda = 0.562, not 1.000 -- its panel is not a completed crack

@@ -60,25 +60,29 @@ QUICK_DX, QUICK_ELL, QUICK_STEPS = 0.020, 0.08, 6
 QUICK_SWEEP = (0.0, 0.50)
 
 
-def build(l_b, ell_pf=ELL_PF, dx=DX, ppc=PPC):
+def build(l_b, ell_pf=ELL_PF, dx=DX, ppc=PPC, e_mod=E_MOD, tip=TIP_DISPLACEMENT,
+          span=SPAN, depth=DEPTH, notch_x=NOTCH_X, notch_depth=NOTCH_DEPTH):
+    # e_mod and tip exist for the stiffness-matched control, the geometry for
+    # the size series (beam_stiffness_control.py, beam_size_effect.py); the
+    # sweep never passes them.
     check_resolution(dx, ell_pf, l_b)
-    grid, nx, ny = build_grid((SPAN, DEPTH), dx)
-    parts = seed_particles((SPAN, DEPTH), dx, ppc)
+    grid, nx, ny = build_grid((span, depth), dx)
+    parts = seed_particles((span, depth), dx, ppc)
     nan = np.nan
     bcs = [
         # clamped: the microrotation is restrained too, which is what makes
         # this a built-in end for a Cosserat solid rather than a pin
         GridDirichlet(lambda c: c[:, 0] < 1e-9, np.zeros(6)),
-        GridDirichlet(lambda c: np.abs(c[:, 0] - SPAN) < 1e-9,
-                      np.array([nan, TIP_DISPLACEMENT, nan, nan, nan, nan])),
+        GridDirichlet(lambda c: np.abs(c[:, 0] - span) < 1e-9,
+                      np.array([nan, tip, nan, nan, nan, nan])),
         plane_strain_bc(),
     ]
-    pf, stepper = make_problem(grid, parts, E=E_MOD, nu=NU, N=N_COUPLING,
+    pf, stepper = make_problem(grid, parts, E=e_mod, nu=NU, N=N_COUPLING,
                                l_b=l_b, gc=GC, ell_pf=ell_pf, bcs=bcs)
     seed_notch(pf, parts, dx, ell_pf, GC,
-               tip=np.array([NOTCH_X, NOTCH_DEPTH]), along="y")
+               tip=np.array([notch_x, notch_depth]), along="y")
     xy = np.asarray(grid.node_coordinates())
-    tip_nodes = np.flatnonzero(np.abs(xy[:, 0] - SPAN) < 1e-9)
+    tip_nodes = np.flatnonzero(np.abs(xy[:, 0] - span) < 1e-9)
     return pf, stepper, parts, tip_nodes
 
 

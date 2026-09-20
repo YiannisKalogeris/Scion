@@ -55,6 +55,14 @@ matches an independent analytical solution to within 2.6% on every component,
 and matches the reference's own implementation to a fraction of a percent --
 with a **linear** basis against their GIMPM.
 
+**Not converged in load steps -- read the table as a 15-step result.**
+Measured with the exact map at 8 / 15 / 30 / 60 steps on the 1 m mesh: in-plane
+26.62 / 27.04 / 28.16 / 29.49, along the load 51.51 / 51.75 / 52.24 / 52.73.
+Fifteen is the reference's own count, so the comparison with it is like for
+like, but the close in-plane agreement with the analytic value is partly a
+property of that count. A hyperelastic answer should not depend on the load
+path; the cause is not isolated (see ``micropolar_wryness_update.py``).
+
 Two things not to over-read
 ---------------------------
 **Exact agreement is not available even in principle.** The analytical solution
@@ -151,7 +159,7 @@ def seed(dx: float, ppc: int):
 
 
 def run(dx: float, ppc: int = 4, n_steps: int = LOAD_STEPS,
-        basis: str = "linear"):
+        basis: str = "linear", wryness_map: str = "exact"):
     X, sub = seed(dx, ppc)
     theta = np.arctan2(X[:, 1], X[:, 0])
     tip = theta > SWEEP - sub / RADIUS
@@ -174,6 +182,9 @@ def run(dx: float, ppc: int = 4, n_steps: int = LOAD_STEPS,
         grid, MATERIAL, particle_force=force, max_iter=25,
         dirichlet=[GridDirichlet(lambda c: c[:, 1] < 1e-9, np.zeros(6))])
 
+    # "exact" is the only correct setting; the others exist for
+    # micropolar_wryness_update.py, which measures what the exact map buys
+    stepper.wryness_map = wryness_map
     t0 = time.time()
     with quiet():
         stepper.run(particles, n_steps=n_steps)

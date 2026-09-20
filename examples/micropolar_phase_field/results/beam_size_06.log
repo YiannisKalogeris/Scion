@@ -1,0 +1,42 @@
+Notched beam size series: fixed material, similar geometry
+  l_b = 0.1, l = 0.04, dx = 0.01; sizes h = (0.2, 0.3, 0.4, 0.6)
+
+  h = 0.2: already on disk, loading
+  h = 0.3: already on disk, loading
+  h = 0.4: already on disk, loading
+      h=0.6 l_b=0 x1  lambda 0.083  load      0.6625  d_max 1.000  cuts  0     3.0 min elapsed, ~ 33.1 min left
+      h=0.6 l_b=0 x1  lambda 0.167  load       1.318  d_max 1.000  cuts  0     6.0 min elapsed, ~ 30.0 min left
+      h=0.6 l_b=0 x1  lambda 0.250  load       1.958  d_max 1.000  cuts  0    10.0 min elapsed, ~ 29.9 min left
+      h=0.6 l_b=0 x1  lambda 0.333  load       2.571  d_max 1.000  cuts  0    15.0 min elapsed, ~ 29.9 min left
+      h=0.6 l_b=0 x1  lambda 0.417  load       3.143  d_max 1.000  cuts  0    21.9 min elapsed, ~ 30.7 min left
+      h=0.6 l_b=0 x1  lambda 0.500  load       3.646  d_max 1.000  cuts  0    32.0 min elapsed, ~ 32.0 min left
+      h=0.6 l_b=0 x1  lambda 0.583  load       3.953  d_max 1.000  cuts  0    57.5 min elapsed, ~ 41.1 min left
+      h=0.6 l_b=0 x1  lambda 0.667  load       3.106  d_max 1.000  cuts  0    82.4 min elapsed, ~ 41.2 min left
+      h=0.6 l_b=0 x1  lambda 0.750  load       2.133  d_max 1.000  cuts  0   107.3 min elapsed, ~ 35.8 min left
+      h=0.6 l_b=0 x1  lambda 0.833  load       1.539  d_max 1.000  cuts  0   140.3 min elapsed, ~ 28.1 min left
+      h=0.6 l_b=0 x1  lambda 0.917  load       1.147  d_max 1.000  cuts  0   173.3 min elapsed, ~ 15.8 min left
+      h=0.6 l_b=0 x1  lambda 1.000  load      0.9124  d_max 1.000  cuts  0   198.0 min elapsed, ~  0.0 min left
+      h=0.6 l_b=0.1 x1  lambda 0.083  load       1.205  d_max 1.000  cuts  0     2.7 min elapsed, ~ 30.0 min left
+      h=0.6 l_b=0.1 x1  lambda 0.167  load       2.391  d_max 1.000  cuts  0     5.4 min elapsed, ~ 27.2 min left
+      h=0.6 l_b=0.1 x1  lambda 0.250  load       3.531  d_max 1.000  cuts  0     9.1 min elapsed, ~ 27.2 min left
+      h=0.6 l_b=0.1 x1  lambda 0.333  load       4.602  d_max 1.000  cuts  0    13.6 min elapsed, ~ 27.2 min left
+      h=0.6 l_b=0.1 x1  lambda 0.417  load        5.57  d_max 1.000  cuts  0    19.9 min elapsed, ~ 27.9 min left
+      h=0.6 l_b=0.1 x1  lambda 0.500  load       6.371  d_max 1.000  cuts  0    30.7 min elapsed, ~ 30.7 min left
+      h=0.6 l_b=0.1 x1  lambda 0.583  load       6.489  d_max 1.000  cuts  0    53.3 min elapsed, ~ 38.1 min left
+      h=0.6 l_b=0.1 x1  lambda 0.667  load       4.596  d_max 1.000  cuts  0    75.8 min elapsed, ~ 37.9 min left
+      h=0.6 l_b=0.1 x1  lambda 0.750  load       2.581  d_max 1.000  cuts  0    98.3 min elapsed, ~ 32.8 min left
+      h=0.6 l_b=0.1 x1  lambda 0.833  load     0.03022  d_max 1.000  cuts  0   114.6 min elapsed, ~ 22.9 min left
+      h=0.6 l_b=0.1 x1  lambda 0.917  load     0.02812  d_max 1.000  cuts  0   118.3 min elapsed, ~ 10.8 min left
+      h=0.6 l_b=0.1 x1  lambda 1.000  load     0.02655  d_max 1.000  cuts  0   121.9 min elapsed, ~  0.0 min left
+
+      h   l/h  l_b/h     P ref      P mp  ratio    sN ref     sN mp  pk step  notch/clamp ref  notch/clamp mp       min
+  ----------------------------------------------------------------------------------------------------------------------
+   0.20  0.20  0.500     1.512      4.99  3.300      7372 2.433e+04  12/6      1.000/0.126      1.000/0.299     11/10  
+   0.30  0.13  0.333     2.332     5.928  2.542      7580 1.927e+04   9/6      0.998/0.073      0.998/0.200     24/23  
+   0.40  0.10  0.250     2.948     6.342  2.151      7185 1.546e+04   8/6      0.999/0.078      0.999/0.133    nan/nan 
+   0.60  0.07  0.167     3.953     6.489  1.642      6423 1.054e+04   6/6      1.000/0.083      1.000/0.115    198/122 
+
+  A peak step below ~4 means the peak is under-sampled; a clamp damage close to
+  the notch damage means the beam did not crack where the size series assumes.
+
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/beam_size_effect.png

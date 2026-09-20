@@ -108,13 +108,22 @@ class MicropolarPhaseFieldMPM:
         part of the symmetric strain, the relative-rotation penalty, and the
         curvature energy. Only the first is split; see the module docstring.
         """
+        return sum(self.driving_densities())
+
+    def driving_densities(self) -> tuple:
+        """``(W_iso+, W_rel, W_curv)`` per particle, undegraded, ``(n,)`` each.
+
+        The one place the three terms are evaluated; `driving_energy` sums them
+        and `driving_shares` normalises their totals, so a density map drawn
+        from this cannot disagree with the shares reported in a table.
+        """
         S, A, Gam = self._strain_parts()
         el = self.stepper.elastic
         psi_sym = self.model.driving_energy(S)
         psi_skew = el.mu * el.a * np.einsum("pij,pij->p", A, A)
         _, couple = el.stresses(np.zeros_like(S), Gam)
         psi_curv = 0.5 * np.einsum("pij,pij->p", couple, Gam)
-        return psi_sym + psi_skew + psi_curv
+        return psi_sym, psi_skew, psi_curv
 
     def driving_shares(self) -> dict:
         """The three contributions as fractions of the total.
@@ -129,12 +138,7 @@ class MicropolarPhaseFieldMPM:
         which is not a defect of the model but a statement about where the
         internal length can possibly matter.
         """
-        S, A, Gam = self._strain_parts()
-        el = self.stepper.elastic
-        psi_sym = self.model.driving_energy(S)
-        psi_skew = el.mu * el.a * np.einsum("pij,pij->p", A, A)
-        _, couple = el.stresses(np.zeros_like(S), Gam)
-        psi_curv = 0.5 * np.einsum("pij,pij->p", couple, Gam)
+        psi_sym, psi_skew, psi_curv = self.driving_densities()
         tot = psi_sym + psi_skew + psi_curv
         # Energy-weighted, not a mean of per-particle ratios: unloaded
         # particles contribute 0/0 and would otherwise dilute every share

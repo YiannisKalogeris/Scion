@@ -1,0 +1,44 @@
+=== 4. production tension --to-peak ===
+Mon Sep 14 18:00:06 EEST 2026
+Micropolar phase-field fracture: single-edge notched tension
+  1.0 x 1.0 plate, notch to x = 0.5 at mid-height
+  E = 210.001, nu = 0.2999950475435816, N = 0.35, G_c = 0.0027
+  l = 0.05 (4.0 cells), dx = 0.0125, 2 particles per cell per direction, 16 load steps
+
+  Part 2: the internal-length sweep, everything else fixed
+
+  (row 0 is the CLASSICAL solve, per unit thickness; the micropolar rows are
+   scaled to the same thickness so the peak loads are directly comparable)
+
+    l_b/l      l_b  l_b/dx   peak load  normalised     W_rel    W_curv  reached  cuts
+  ----------------------------------------------------------------------------------
+   class.   0.0000      --      0.5139      1.0000         0         0    1.000     0
+     0.00   0.0000      --      0.5151      1.0024  7.16e-05         0    0.562     0
+     1.00   0.0500     4.0      0.5206      1.0131  0.000404   0.00107    0.562     0
+     2.00   0.1000     8.0       0.524      1.0197  0.000639   0.00165    0.562     0
+     4.00   0.2000    16.0      0.5269      1.0254  0.000854    0.0021    0.562     0
+
+    --to-peak: 4 of 5 rows stopped once the load had fallen to 90% of
+    their own maximum. The peak load and the three shares are evaluated at the
+    peak, so they are unaffected; the post-peak branch and the damage figures
+    are not available from this run.
+
+    Peak load varies by 2.54% across the whole sweep, and the curvature
+    share of the driving force never exceeds 2.1e-03. The internal length is not
+    reaching the crack. This is not a deficiency of the formulation: the wryness
+    measures the *gradient* of the microrotation, a notched plate in tension is
+    stretch-dominated, so that gradient is small however l_b compares with the
+    notch, the specimen or l. Compare notched_beam, where the same machinery in
+    bending moves the peak load substantially.
+
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_data_peak.npz  (10.9 MB)
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_load_peak.png
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_damage_peak.png
+wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/tension_damage_peak_final.png
+TENSION (_peak)
+  lb0    peak 0.51512 -> 0.51512 (-0.0000%)   W_rel 7.164e-05 -> 7.164e-05   W_curv 0 -> 0
+  lb1    peak 0.520576 -> 0.520582 (+0.0011%)   W_rel 0.0004044 -> 0.0004043   W_curv 0.001099 -> 0.001067
+  lb2    peak 0.523971 -> 0.523975 (+0.0008%)   W_rel 0.0006391 -> 0.0006389   W_curv 0.001705 -> 0.001648
+  lb4    peak 0.5269 -> 0.526902 (+0.0004%)   W_rel 0.0008544 -> 0.0008543   W_curv 0.002172 -> 0.002096
+=== tension done ===
+Mon Sep 14 23:01:05 EEST 2026

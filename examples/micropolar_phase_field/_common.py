@@ -133,7 +133,7 @@ def make_problem(grid, parts, *, E, nu, N, l_b, gc, ell_pf, bcs,
 
 def run_load_path(pf, stepper, parts, react_nodes, comp, n_steps,
                   min_fraction=1.0 / 64.0, growth=1.5, progress=None,
-                  stop_past_peak=None):
+                  stop_past_peak=None, on_step=None):
     """Step to the full prescribed displacement, recording the load path.
 
     Adaptive, and it has to be. Past the peak load the crack releases more
@@ -157,7 +157,7 @@ def run_load_path(pf, stepper, parts, react_nodes, comp, n_steps,
     contribution can be read at the *peak* rather than at the end, where the
     specimen has already lost most of its stiffness.
     """
-    disp, load, dmax, shares, fields = [], [], [], [], []
+    disp, load, dmax, shares, fields, extra = [], [], [], [], [], []
     lam, increment, floor = 0.0, 1.0 / n_steps, min_fraction / n_steps
     cutbacks, t0, past_peak = 0, time.time(), False
     with quiet():
@@ -187,6 +187,11 @@ def run_load_path(pf, stepper, parts, react_nodes, comp, n_steps,
             # different lambda, and it makes a row that merely stopped early
             # look like one that resisted cracking.
             fields.append(pf.tables.interpolate(pf.d).copy())
+            # anything else a caller wants at every converged step -- the
+            # per-particle energy densities for a map at the peak, say --
+            # without this function having to know what
+            if on_step is not None:
+                extra.append(on_step(pf, stepper, parts))
             increment = min(increment * growth, 1.0 / n_steps)
             # Optional early stop, once the load has fallen clear of its own
             # maximum. Everything reported *at the peak* -- the peak load
@@ -219,5 +224,5 @@ def run_load_path(pf, stepper, parts, react_nodes, comp, n_steps,
     return {"disp": np.array(disp), "load": np.array(load),
             "max_damage": np.array(dmax), "shares": shares,
             "reached": lam, "cutbacks": cutbacks, "fields": fields,
-            "stopped_past_peak": past_peak,
+            "stopped_past_peak": past_peak, "extra": extra,
             "seconds": time.time() - t0}

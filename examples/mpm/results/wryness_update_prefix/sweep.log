@@ -1,0 +1,47 @@
+Wryness update on the curved cantilever, 1 m mesh
+  maps ('exact', 'identity', 'transpose'), load steps (8, 15, 30, 60)
+
+  running exact     n =   8 ...
+    done in 2.5 min
+  running identity  n =   8 ...
+    done in 1.8 min
+  running transpose n =   8 ...
+    done in 2.6 min
+  running exact     n =  15 ...
+    done in 2.3 min
+  running identity  n =  15 ...
+    done in 2.4 min
+  running transpose n =  15 ...
+    done in 2.4 min
+  running exact     n =  30 ...
+    done in 4.1 min
+  running identity  n =  30 ...
+    done in 4.0 min
+  running transpose n =  30 ...
+    done in 4.2 min
+  running exact     n =  60 ...
+    done in 7.7 min
+  running identity  n =  60 ...
+    done in 7.8 min
+  running transpose n =  60 ...
+    done in 7.9 min
+
+     n        map  along load  in-plane  |Gam - Gam_exact|    min
+  ----------------------------------------------------------------
+     8      exact     51.6560   26.7869          0.000e+00    2.5
+     8   identity     51.2495   26.0708          1.669e-01    1.8
+     8  transpose     51.8484   27.2376          1.647e-01    2.6
+    15      exact     51.8330   27.1371          0.000e+00    2.3
+    15   identity     51.1700   26.3007          1.686e-01    2.4
+    15  transpose     51.5900   26.8024          1.442e-01    2.4
+    30      exact     52.3400   28.2979          0.000e+00    4.1
+    30   identity     52.2867   28.2188          1.522e-01    4.0
+    30  transpose     52.3491   28.2655          1.499e-01    4.2
+    60      exact     52.5440   29.3639          0.000e+00    7.7
+    60   identity     52.7248   29.6139          1.348e-01    7.8
+    60  transpose     52.3105   28.8212          1.570e-01    7.9
+
+  exact map against its own n = 60 run (the load-step dependence it does not remove):
+    n =   8   |Gam - Gam_fine| 2.200e-01   tip along load -1.690%   in-plane -8.776%
+    n =  15   |Gam - Gam_fine| 2.095e-01   tip along load -1.353%   in-plane -7.583%
+    n =  30   |Gam - Gam_fine| 1.841e-01   tip along load -0.388%   in-plane -3.630%

@@ -1,0 +1,25 @@
+Stiffness-matched control for the notched beam
+  from beam_data.npz: l_b/h = 0.5 is 6.0625x stiffer than l_b = 0 and 3.5620x stronger
+  control: l_b = 0, E = 6.0625 E0, tip displacement / 2.4622
+  prediction (exact sqrt(E) scaling): peak ratio 2.4622
+
+      control  lambda 0.083  load       1.023  d_max 1.000  cuts  0     1.4 min elapsed, ~ 15.8 min left
+      control  lambda 0.167  load       2.037  d_max 1.000  cuts  0     2.9 min elapsed, ~ 14.5 min left
+      control  lambda 0.250  load       3.033  d_max 1.000  cuts  0     4.4 min elapsed, ~ 13.1 min left
+      control  lambda 0.333  load       3.999  d_max 1.000  cuts  0     6.3 min elapsed, ~ 12.7 min left
+      control  lambda 0.417  load       4.924  d_max 1.000  cuts  0     8.7 min elapsed, ~ 12.2 min left
+      control  lambda 0.500  load       5.791  d_max 1.000  cuts  0    11.6 min elapsed, ~ 11.6 min left
+      control  lambda 0.583  load       6.576  d_max 1.000  cuts  0    14.9 min elapsed, ~ 10.6 min left
+      control  lambda 0.667  load       7.164  d_max 1.000  cuts  0    26.8 min elapsed, ~ 13.4 min left
+      control  lambda 0.750  load        7.26  d_max 1.000  cuts  0    38.6 min elapsed, ~ 12.9 min left
+      control  lambda 0.833  load       5.644  d_max 1.000  cuts  0    50.7 min elapsed, ~ 10.1 min left
+      control  lambda 0.917  load       4.128  d_max 1.000  cuts  0    63.0 min elapsed, ~  5.7 min left
+      control  lambda 1.000  load       3.282  d_max 1.000  cuts  0    75.0 min elapsed, ~  0.0 min left
+
+  control stiffness   6.0626x   (target 6.0625x)
+  control peak        2.4629x   (predicted 2.4622x, off by +0.03%)
+  micropolar peak     3.5620x
+
+  strength beyond stiffness: 1.4463x -- the part of the micropolar
+  gain a classical beam of the same stiffness does not reproduce.
+  wrote /Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/results/beam_control.npz

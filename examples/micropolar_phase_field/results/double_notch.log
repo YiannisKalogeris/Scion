@@ -1,0 +1,49 @@
+Double-notched plate under inclined loading, after Behera et al. (2024)
+  100.0 x 100.0 mm, two 25.0 mm notches at mid-height, E = 32.5 GPa, nu = 0.3, G_c = 0.1 N/mm
+  l_b = 15.0 mm fixed, N swept over (0.0, 0.3, 0.5, 0.7)
+  dx = 1 mm, l = 4 mm (l/dx = 4), 80,000 particles, 24 load steps to u = 0.06 mm per component
+
+      N=0  lambda 0.042  load       58.86  d_max 1.000  cuts  0     6.4 min elapsed, ~146.7 min left
+      N=0  lambda 0.083  load       116.9  d_max 1.000  cuts  0    11.8 min elapsed, ~130.3 min left
+      N=0  lambda 0.125  load       173.1  d_max 1.000  cuts  0    17.3 min elapsed, ~120.9 min left
+      N=0  lambda 0.167  load       226.6  d_max 1.000  cuts  0    24.5 min elapsed, ~122.7 min left
+      N=0  lambda 0.208  load       276.5  d_max 1.000  cuts  0    33.5 min elapsed, ~127.5 min left
+      N=0  lambda 0.250  load       321.8  d_max 1.000  cuts  0    44.2 min elapsed, ~132.5 min left
+      N=0  lambda 0.292  load       361.2  d_max 1.000  cuts  0    58.4 min elapsed, ~141.7 min left
+      N=0  lambda 0.333  load       391.7  d_max 1.000  cuts  0    81.4 min elapsed, ~162.8 min left
+      N=0  lambda 0.375  load       381.5  d_max 1.000  cuts  0   134.3 min elapsed, ~223.8 min left
+      N=0  lambda 0.417  load       74.36  d_max 1.000  cuts  0   186.9 min elapsed, ~261.7 min left  [past peak, stopping]
+    N = 0: peak 364.5 N at t = 0.333, reached 0.417, 187 min
+      N=0.3  lambda 0.042  load       60.14  d_max 1.000  cuts  0     3.2 min elapsed, ~ 74.5 min left
+      N=0.3  lambda 0.083  load       119.4  d_max 1.000  cuts  0     6.5 min elapsed, ~ 71.4 min left
+      N=0.3  lambda 0.125  load       176.8  d_max 1.000  cuts  0     9.7 min elapsed, ~ 67.9 min left
+      N=0.3  lambda 0.167  load       231.4  d_max 1.000  cuts  0    14.0 min elapsed, ~ 70.1 min left
+      N=0.3  lambda 0.208  load       282.3  d_max 1.000  cuts  0    19.4 min elapsed, ~ 73.9 min left
+      N=0.3  lambda 0.250  load       328.4  d_max 1.000  cuts  0    25.9 min elapsed, ~ 77.7 min left
+      N=0.3  lambda 0.292  load       368.4  d_max 1.000  cuts  0    34.5 min elapsed, ~ 83.7 min left
+      N=0.3  lambda 0.333  load       399.6  d_max 1.000  cuts  0    47.4 min elapsed, ~ 94.7 min left
+      N=0.3  lambda 0.375  load       404.6  d_max 1.000  cuts  0    79.6 min elapsed, ~132.6 min left
+      N=0.3  lambda 0.417  load       9.236  d_max 1.000  cuts  0   111.8 min elapsed, ~156.5 min left  [past peak, stopping]
+    N = 0.3: peak 377.7 N at t = 0.375, reached 0.417, 112 min
+      N=0.5  lambda 0.042  load       61.96  d_max 1.000  cuts  0     3.2 min elapsed, ~ 74.5 min left
+      N=0.5  lambda 0.083  load         123  d_max 1.000  cuts  0     6.5 min elapsed, ~ 71.1 min left
+      N=0.5  lambda 0.125  load       182.1  d_max 1.000  cuts  0     9.7 min elapsed, ~ 67.8 min left
+      N=0.5  lambda 0.167  load       238.2  d_max 1.000  cuts  0    14.0 min elapsed, ~ 70.0 min left
+      N=0.5  lambda 0.208  load       290.4  d_max 1.000  cuts  0    19.3 min elapsed, ~ 73.5 min left
+      N=0.5  lambda 0.250  load       337.6  d_max 1.000  cuts  0    25.8 min elapsed, ~ 77.4 min left
+      N=0.5  lambda 0.292  load       378.5  d_max 1.000  cuts  0    33.3 min elapsed, ~ 81.0 min left
+      N=0.5  lambda 0.333  load       410.5  d_max 1.000  cuts  0    45.3 min elapsed, ~ 90.7 min left
+      N=0.5  lambda 0.375  load       422.8  d_max 1.000  cuts  0   225.5 min elapsed, ~375.8 min left
+      N=0.5  lambda 0.417  load        6.75  d_max 1.000  cuts  0   258.2 min elapsed, ~361.4 min left  [past peak, stopping]
+    N = 0.5: peak 395.2 N at t = 0.375, reached 0.417, 258 min
+      N=0.7  lambda 0.042  load       64.08  d_max 1.000  cuts  0     3.3 min elapsed, ~ 75.5 min left
+      N=0.7  lambda 0.083  load       127.2  d_max 1.000  cuts  0     6.5 min elapsed, ~ 71.6 min left
+      N=0.7  lambda 0.125  load       188.2  d_max 1.000  cuts  0     9.7 min elapsed, ~ 68.2 min left
+      N=0.7  lambda 0.167  load       246.1  d_max 1.000  cuts  0    14.1 min elapsed, ~ 70.4 min left
+      N=0.7  lambda 0.208  load         300  d_max 1.000  cuts  0    18.5 min elapsed, ~ 70.3 min left
+      N=0.7  lambda 0.250  load       348.5  d_max 1.000  cuts  0    24.1 min elapsed, ~ 72.3 min left
+      N=0.7  lambda 0.292  load       390.4  d_max 1.000  cuts  0    31.9 min elapsed, ~ 77.6 min left
+      N=0.7  lambda 0.333  load       423.2  d_max 1.000  cuts  0    43.1 min elapsed, ~ 86.2 min left
+      N=0.7  lambda 0.375  load         439  d_max 1.000  cuts  0    65.5 min elapsed, ~109.2 min left
+      N=0.7  lambda 0.417  load        5.52  d_max 1.000  cuts  0    98.2 min elapsed, ~137.5 min left  [past peak, stopping]
+    N = 0.7: peak 411 N at t = 0.375, reached 0.417, 98 min

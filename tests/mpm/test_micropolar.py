@@ -232,6 +232,102 @@ class TestWryness:
         expect = np.einsum("pji,pjk,pkn->pin", Q, spin_map(phi_p), grad_p)
         assert np.abs(parts.wryness - expect).max() < 1e-14 * np.abs(expect).max()
 
+    @staticmethod
+    def _accumulate(mode, n):
+        """Impose ``phi = A X`` in ``n`` equal increments; error against exact.
+
+        The increments are parallel *at each point*, so they compose exactly to
+        ``Q = exp(skew(A X))`` -- but their gradient ``A/n`` is not parallel to
+        them, which is the only situation in which ``H`` differs from ``I``. In
+        a problem whose rotation axis never moves (every plane-strain example)
+        the map is the identity on the vectors it acts on, and this test would
+        show nothing. The exact wryness is ``Q^T H(A X) A``, the form
+        `test_H_not_H_transpose` verifies against the definition.
+        """
+        A = np.array([[0.0, 0.30, 0.10], [0.20, 0.0, -0.15],
+                      [0.18, 0.25, 0.0]])
+        grid, parts = block()
+        stepper = MicropolarMPMStepper(grid, MATERIAL)
+        stepper.prepare(parts)
+        stepper.wryness_map = mode
+        dof = np.zeros(stepper._n_dof)
+        dof.reshape(grid.n_nodes, 6)[:, 3:] = grid.node_coordinates() @ A.T / n
+        X = parts.x.copy()
+        for _ in range(n):
+            stepper.apply_increment(parts, dof)
+        Q = quat_to_matrix(parts.quat)
+        exact = np.einsum("pji,pjk,kn->pin", Q, spin_map(X @ A.T), A)
+        return np.linalg.norm(parts.wryness - exact) / np.linalg.norm(exact)
+
+    def test_exact_map_accumulates_with_no_load_step_dependence(self):
+        """Over several increments the update is exact, not merely convergent.
+
+        Measured, rotations to 0.89 rad: 3.9e-16 at one step and 1.2e-15 at
+        sixteen. ``Q_{k+1} = exp(dphi) Q_k`` makes
+        ``Gamma_{k+1} = Gamma_k + Q_{k+1}^T H(dphi) grad dphi`` an identity, so
+        splitting the load differently cannot change the answer.
+        """
+        for n in (1, 2, 4, 8):
+            assert self._accumulate("exact", n) < 1e-13
+
+    def test_accumulation_is_exact_on_a_rotating_body(self):
+        """The same field imposed while the body rotates rigidly by 0.9 rad.
+
+        Guards a real bug. ``apply_increment`` formed the wryness increment from
+        the spatial gradient of the *old* configuration times the *updated* F.
+        With ``F = I`` throughout -- every other wryness test -- the two F are
+        equal and nothing shows; at zero increment -- every tangent check --
+        the same. With the body moving it was first order: 84.6% wrong in one
+        step, 21.8% in four, 5.5% in sixteen. The material gradient is now
+        formed before F advances, and the result is exact at any step count.
+        """
+        from scipy.spatial.transform import Rotation
+        A = np.array([[0.0, 0.30, 0.10], [0.20, 0.0, -0.15],
+                      [0.18, 0.25, 0.0]])
+        axis = np.array([0.3, -0.5, 0.8]) / np.linalg.norm([0.3, -0.5, 0.8])
+        for n in (1, 4):
+            grid, parts = block(shape=(9, 9, 9), lo=(1.0, 1.0, 1.0),
+                                hi=(2.5, 2.5, 2.5))
+            stepper = MicropolarMPMStepper(grid, MATERIAL)
+            X = parts.x.copy()
+            c = X.mean(axis=0)
+            R_step = Rotation.from_rotvec(axis * 0.9 / n).as_matrix()
+            for k in range(n):
+                stepper.prepare(parts)
+                R_k = Rotation.from_rotvec(axis * 0.9 * k / n).as_matrix()
+                xn = grid.node_coordinates()
+                dof = np.zeros((grid.n_nodes, 6))
+                dof[:, :3] = (xn - c) @ (R_step - np.eye(3)).T
+                # the increment is A X / n at the *material* point now at xn
+                dof[:, 3:] = ((xn - c) @ R_k + c) @ A.T / n
+                stepper.apply_increment(parts, dof.ravel())
+            Q = quat_to_matrix(parts.quat)
+            exact = np.einsum("pji,pjk,kn->pin", Q, spin_map(X @ A.T), A)
+            err = np.linalg.norm(parts.wryness - exact) / np.linalg.norm(exact)
+            assert err < 1e-12, (n, err)
+
+    def test_first_order_shortcuts_depend_on_the_load_steps(self):
+        """``H = I`` and ``H^T`` are first order in the increment, measured.
+
+        18.7 / 9.3 / 4.6 / 2.3 % for ``H = I`` at 1 / 2 / 4 / 8 steps -- halving
+        exactly with each doubling -- and ``H^T`` twice that throughout, since
+        ``H - I`` is the skew term and ``H^T - H`` is minus twice it. This is
+        the measurement behind the paper's statement that the shortcut makes the
+        curvature depend on the number of load steps.
+        """
+        ident = [self._accumulate("identity", n) for n in (1, 2, 4, 8)]
+        trans = [self._accumulate("transpose", n) for n in (1, 2, 4, 8)]
+        assert ident[0] > 0.1
+        for a, b in zip(ident, ident[1:]):
+            assert abs(a / b - 2.0) < 0.05          # first order
+        # The factor of two is itself a first-order statement, so it holds only
+        # as the increment shrinks: 1.947 in a single 0.89-rad step, 1.98 at two
+        # and 1.996 by eight. An earlier version asserted it at one step too and
+        # failed on the higher-order terms, not on the code.
+        ratios = [t / i for i, t in zip(ident, trans)]
+        assert all(abs(r - 2.0) < 0.03 for r in ratios[1:])
+        assert abs(ratios[-1] - 2.0) < abs(ratios[0] - 2.0)
+
 
 # ======================================================================
 # 4. the tangent
