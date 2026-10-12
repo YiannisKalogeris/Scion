@@ -8,6 +8,7 @@ difference in the *method* rather than in the problem.
 from __future__ import annotations
 
 import time
+import os
 from pathlib import Path
 
 import numpy as np
@@ -119,11 +120,15 @@ def seed_notch(pf, parts, dx, ell_pf, gc, tip, along,
 
 
 def make_problem(grid, parts, *, E, nu, N, l_b, gc, ell_pf, bcs,
-                 max_iter=25, max_stagger=25):
+                 max_iter=25, max_stagger=25, linear_solver=None):
+    # linear_solver defaults to the stepper's own DirectSolver, which is what
+    # every plane-strain example uses. It exists for the three-dimensional
+    # example, where the direct factorisation's fill-in dominates.
     elastic = MicropolarHooke.from_technical(E=E, nu=nu, N=N, l_t=2.0 * l_b,
                                              l_b=l_b, psi=1.5)
     stepper = MicropolarMPMStepper(grid, elastic, dirichlet=bcs,
-                                   max_iter=max_iter)
+                                   max_iter=max_iter,
+                                   linear_solver=linear_solver)
     stepper.prepare(parts)
     model = PhaseFieldModel(E, nu, gc, ell_pf, split="spectral",
                             coupling="hybrid", dissipation="AT2")
@@ -133,7 +138,8 @@ def make_problem(grid, parts, *, E, nu, N, l_b, gc, ell_pf, bcs,
 
 def run_load_path(pf, stepper, parts, react_nodes, comp, n_steps,
                   min_fraction=1.0 / 64.0, growth=1.5, progress=None,
-                  stop_past_peak=None, on_step=None):
+                  stop_past_peak=None, on_step=None, reaction=None,
+                  checkpoint=None, resume=True):
     """Step to the full prescribed displacement, recording the load path.
 
     Adaptive, and it has to be. Past the peak load the crack releases more
@@ -160,6 +166,23 @@ def run_load_path(pf, stepper, parts, react_nodes, comp, n_steps,
     disp, load, dmax, shares, fields, extra = [], [], [], [], [], []
     lam, increment, floor = 0.0, 1.0 / n_steps, min_fraction / n_steps
     cutbacks, t0, past_peak = 0, time.time(), False
+    # Resume, if a checkpoint from an interrupted run is present. The recorded
+    # history is restored with it, so the returned result is the same object a
+    # run without an interruption would have produced.
+    if checkpoint is not None and resume and Path(checkpoint).exists():
+        lam, increment, ex = load_checkpoint(checkpoint, pf, parts)
+        stepper.prepare(parts)
+        disp = list(ex["hist_disp"]); load = list(ex["hist_load"])
+        dmax = list(ex["hist_dmax"]); cutbacks = int(ex["cutbacks"])
+        fields = [np.asarray(f) for f in ex["hist_fields"]]
+        shares = [dict(zip(ex["share_keys"].tolist(), row))
+                  for row in ex["hist_shares"]]
+        if "hist_extra" in ex and np.size(ex["hist_extra"]):
+            extra = [np.asarray(r) for r in ex["hist_extra"]]
+        if progress:
+            print(f"      {progress}  resumed from {Path(checkpoint).name} at "
+                  f"lambda {lam:5.3f} ({len(disp)} steps already done)",
+                  flush=True)
     with quiet():
         while lam < 1.0 - 1e-12:
             step = min(increment, 1.0 - lam)
@@ -178,7 +201,11 @@ def run_load_path(pf, stepper, parts, react_nodes, comp, n_steps,
             lam += step
             f = stepper.internal_force(parts)
             disp.append(lam)
-            load.append(float(f[react_nodes * 6 + comp].sum()))
+            # ``reaction`` exists for torsion, where the conjugate quantity is a
+            # torque rather than a force component and cannot be read off one
+            # slice of the nodal force vector.
+            load.append(float(f[react_nodes * 6 + comp].sum())
+                        if reaction is None else float(reaction(f)))
             dmax.append(float(pf.d.max()))
             shares.append(pf.driving_shares())
             # the damage field at every converged step, so the figures can be
@@ -192,6 +219,17 @@ def run_load_path(pf, stepper, parts, react_nodes, comp, n_steps,
             # without this function having to know what
             if on_step is not None:
                 extra.append(on_step(pf, stepper, parts))
+            if checkpoint is not None:
+                keys = list(shares[0].keys())
+                save_checkpoint(
+                    checkpoint, pf, parts, lam, increment,
+                    hist_disp=np.array(disp), hist_load=np.array(load),
+                    hist_dmax=np.array(dmax), cutbacks=cutbacks,
+                    hist_fields=np.array(fields),
+                    share_keys=np.array(keys),
+                    hist_shares=np.array([[sh[k] for k in keys]
+                                          for sh in shares]),
+                    hist_extra=(np.array(extra) if extra else np.zeros(0)))
             increment = min(increment * growth, 1.0 / n_steps)
             # Optional early stop, once the load has fallen clear of its own
             # maximum. Everything reported *at the peak* -- the peak load
@@ -226,3 +264,77 @@ def run_load_path(pf, stepper, parts, react_nodes, comp, n_steps,
             "reached": lam, "cutbacks": cutbacks, "fields": fields,
             "stopped_past_peak": past_peak, "extra": extra,
             "seconds": time.time() - t0}
+
+# ---------------------------------------------------------------------------
+# checkpointing
+#
+# A 39-hour run that writes its results only at the end loses everything to a
+# shutdown, and one of these was lost at 17 hours to exactly that. The state
+# that has to survive is the particle state, the phase field and the load
+# factor; the stepper is rebuilt from the particles by ``prepare``, so it needs
+# nothing of its own. Saved after every converged step, which costs a few
+# seconds against a load step of over an hour.
+# ---------------------------------------------------------------------------
+
+#: Where checkpoints go. Deliberately *not* ``RESULTS``: that sits under
+#: ~/Desktop, which macOS syncs to iCloud by default, and writing a 200 MB
+#: checkpoint there after every load step both risks the rename above and feeds
+#: a sync queue for no reason. Override with SCION_CKPT_DIR.
+CHECKPOINT_DIR = Path(os.environ.get(
+    "SCION_CKPT_DIR", "/tmp/scion_checkpoints"))
+CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+#: Particle arrays carrying history. ``x`` and ``F`` are the kinematics, the
+#: quaternion and wryness the micropolar state, and the plastic fields are
+#: present but unused by the elastic-plus-damage path; they are saved anyway so
+#: a checkpoint does not silently become invalid if a plastic model is used.
+_STATE_FIELDS = ("x", "X", "F", "C", "v", "vol0", "mass", "quat", "wryness",
+                 "F_plastic", "wryness_plastic", "hardening")
+
+
+def save_checkpoint(path, pf, parts, lam, increment, **extra):
+    """Everything needed to resume, written atomically."""
+    import os
+    data = {f"p_{k}": np.asarray(getattr(parts, k))
+            for k in _STATE_FIELDS if hasattr(parts, k)}
+    data.update(d=np.asarray(pf.d), H=np.asarray(pf.H),
+                lam=float(lam), increment=float(increment), **extra)
+    # The suffix must stay ".npz": savez_compressed appends one when the name
+    # lacks it, and the rename then looks for a file that was never written.
+    #
+    # The rename is refused intermittently on an iCloud-synced directory --
+    # ~/Desktop is one by default -- and that killed a 14-hour run at its fifth
+    # checkpoint with EPERM. Two defences. Prefer a directory outside the synced
+    # tree (see CHECKPOINT_DIR), and if the rename is refused anyway, fall back
+    # to writing in place: that loses atomicity for one save, which is strictly
+    # better than losing the run. The window is small and the next step rewrites
+    # it; a torn checkpoint is detected on load because np.load raises.
+    tmp = Path(str(path) + ".tmp.npz")
+    np.savez_compressed(tmp, **data)
+    try:
+        os.replace(tmp, path)      # atomic, so a crash mid-write cannot corrupt
+    except (PermissionError, OSError) as exc:
+        print(f"      [checkpoint] rename refused ({exc}); writing in place. "
+              f"Is {Path(path).parent} inside an iCloud-synced folder?",
+              flush=True)
+        np.savez_compressed(path, **data)
+        tmp.unlink(missing_ok=True)
+
+
+def load_checkpoint(path, pf, parts):
+    """Restore in place; returns ``(lam, increment, extra)``.
+
+    The caller must call ``stepper.prepare(parts)`` afterwards -- the stencil is
+    a function of the particle positions and is not saved.
+    """
+    m = np.load(path, allow_pickle=False)
+    for k in _STATE_FIELDS:
+        key = f"p_{k}"
+        if key in m.files and hasattr(parts, k):
+            getattr(parts, k)[...] = m[key]
+    pf.d[...] = m["d"]
+    pf.H[...] = m["H"]
+    extra = {k: m[k] for k in m.files
+             if not k.startswith("p_") and k not in ("d", "H", "lam", "increment")}
+    return float(m["lam"]), float(m["increment"]), extra

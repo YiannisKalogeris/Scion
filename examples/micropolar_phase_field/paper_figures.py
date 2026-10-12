@@ -221,6 +221,140 @@ def double_notch(plt):
     return fig, "double_notch.png"
 
 
+def torsion(plt):
+    """Torsional size effect, and where the microrotation parts from the continuum.
+
+    Panel (b) was first drawn as a map of ``omega_z`` over a cross-section and
+    that is useless: the classical torsion field has ``omega_z = tau z``, which
+    is *constant* on a section, so the map saturates to one colour. What varies
+    across the section is the in-plane part, and plotting its radial profile
+    gives the analytical check as well as the micropolar effect in one axes.
+    """
+    v = np.load(RESULTS / "torsion3d_verify.npz")
+    fig, (a, b) = plt.subplots(1, 2, figsize=(7.0, 3.0))
+
+    x = v["l_b"] / float(v["a"])
+    a.plot(x, v["K"] / v["K"][0], "s-", color="C3", ms=5, lw=1.2,
+           label="micropolar")
+    a.axhline(1.0, color="k", ls="--", lw=0.9, label=r"classical ($K = GJ$)")
+    a.set_xlabel(r"$\ell_b / a$"); a.set_ylabel(r"$K / K_0$")
+    a.set_ylim(0.0, 2.7); a.legend(loc="lower right")
+    a.set_title("(a)", loc="left", fontsize=9)
+    a.annotate(rf"$K/GJ = {float(v['K'][0] / v['K_cl'][0]):.4f}$",
+               xy=(0.0, 1.0), xytext=(0.08, 1.30), fontsize=8,
+               arrowprops=dict(arrowstyle="->", lw=0.7))
+
+    for frac, col, mk in ((0.0, "C0", "o"), (0.5, "C3", "s")):
+        f = RESULTS / f"torsion3d_fields_{frac:g}.npz"
+        if not f.exists():
+            continue
+        d = np.load(f)
+        X0, w, c = d["X0"], d["w"], d["centre"]
+        L, aa, dx = float(d["L"]), float(d["a"]), float(d["dx"])
+        tau = float(d["theta"]) / L
+        mid = np.abs(X0[:, 2] - 0.5 * L) < 0.6 * dx
+        px, py = X0[mid, 0] - c[0], X0[mid, 1] - c[1]
+        r = np.hypot(px, py)
+        ur = np.stack([px, py], 1) / np.maximum(r, 1e-30)[:, None]
+        w_rad = w[mid, 0] * ur[:, 0] + w[mid, 1] * ur[:, 1]
+        # bin, because 1624 points in one layer is a smear rather than a curve
+        edges = np.linspace(0.0, aa, 13)
+        k = np.clip(np.digitize(r, edges) - 1, 0, len(edges) - 2)
+        rc = 0.5 * (edges[:-1] + edges[1:])
+        prof = np.array([w_rad[k == j].mean() if (k == j).any() else np.nan
+                         for j in range(len(rc))])
+        # omega_r = -(tau/2) r, so omega_r/tau is a LENGTH. The dimensionless
+        # group is omega_r/(tau a), against which the classical profile is
+        # exactly -(r/a)/2. Dividing by tau alone leaves a factor of 1/a and
+        # the classical row then misses its own reference line tenfold.
+        b.plot(rc / aa, prof / (tau * aa), mk + "-", color=col, ms=4, lw=1.2,
+               label=rf"$\ell_b/a = {frac:g}$")
+    rr = np.linspace(0.0, 1.0, 50)
+    b.plot(rr, -0.5 * rr, "k--", lw=1.0,
+           label=r"$\frac{1}{2}\,\mathrm{curl}\,u$")
+    b.axhline(0.0, color="0.7", lw=0.6)
+    b.set_xlabel("$r / a$")
+    b.set_ylabel(r"$\omega_{r} / (\tau a)$")
+    b.legend(loc="lower left", fontsize=7.5)
+    b.set_title("(b)", loc="left", fontsize=9)
+    fig.tight_layout()
+    return fig, "torsion.png"
+
+
+def torsion_fracture(plt, tag="_a24"):
+    """Torque--twist paths, and the damage field on an axial section.
+
+    Panel (b) is an axial section rather than a cross-section because the
+    question is where the crack sits *along* the bar -- at the notch or at the
+    clamp -- and a cross-section cannot show that. It also makes the blunt
+    annular form of the band visible, which the text has to concede: at
+    l/a = 0.167 this is a damage band, not a resolved crack surface, and no
+    claim about a helix is available from it.
+    """
+    f = RESULTS / f"torsion3d_fracture{tag}.npz"
+    d = np.load(f, allow_pickle=True)
+    a, L, c = float(d["a"]), float(d["L"]), d["centre"]
+    fig, (ax, bx) = plt.subplots(1, 2, figsize=(7.0, 3.0))
+
+    for k, lb in enumerate(d["l_b_over_a"]):
+        disp, tq = np.asarray(d["disp"][k]), np.asarray(d["torque"][k])
+        ax.plot(disp, tq, "-o", ms=3, lw=1.2, color=f"C{k*3}",
+                label=rf"$\ell_b/a = {lb:g}$")
+    ax.set_xlabel(r"load factor $t$")
+    ax.set_ylabel(r"torque $T$  [$\mathrm{N\,m}$]")
+    ax.legend(loc="lower right")
+    ax.set_title("(a)", loc="left", fontsize=9)
+    # the ratio belongs next to the peaks it compares, not floating mid-axes
+    pk = d["peak"]
+    ax.annotate(rf"$\times {pk[-1]/pk[0]:.2f}$", xy=(0.03, 0.88),
+                xycoords="axes fraction", fontsize=10, color="0.25")
+
+    # axial section through the bar axis, one particle layer thick
+    X0 = d["X0"]
+    dd = d["d"][-1]
+    dx = float(d["dx"])
+    sl = np.abs(X0[:, 1] - c[1]) < 0.6 * dx
+    sc = bx.scatter((X0[sl, 2]) / a, (X0[sl, 0] - c[0]) / a, c=dd[sl], s=4,
+                    cmap="inferno_r", vmin=0.0, vmax=1.0)
+    bx.set_aspect("equal")
+    bx.set_xlabel("$z / a$"); bx.set_ylabel("$x / a$")
+    bx.set_title("(b)", loc="left", fontsize=9)
+    cb = fig.colorbar(sc, ax=bx, fraction=0.030, pad=0.04)
+    cb.set_label("$d$", fontsize=8); cb.ax.tick_params(labelsize=7)
+    fig.tight_layout()
+    return fig, "torsion_fracture.png"
+
+
+def compression(plt):
+    """Damage GROWTH over the compressive path, micropolar against classical.
+
+    The growth, not the damage: the seeded notch is smeared over ``l``, so ``d``
+    is already ~0.9 around the notch before the specimen is loaded and a map of
+    ``d`` would show the seed rather than the result.
+    """
+    from matplotlib.colors import Normalize
+    m = np.load(RESULTS / "compression_control.npz")
+    c = np.load(RESULTS / "compression_classical.npz")
+    panels = [(r"(a) micropolar, $\ell_b/\ell = 4$", m["X0"][:, :2],
+               m["fields"][-1] - m["fields"][0]),
+              (r"(b) classical, no micropolar terms", c["x"],
+               c["fields"][-1] - c["fields"][0])]
+    vmax = max(g.max() for _, _, g in panels)
+    fig = plt.figure(figsize=(6.2, 2.9))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1, 1, 0.05], wspace=0.15)
+    axes = []
+    for j, (title, X, g) in enumerate(panels):
+        a = fig.add_subplot(gs[0, j])
+        sc = a.scatter(X[:, 0], X[:, 1], c=g, s=0.5, cmap="magma",
+                       norm=Normalize(0.0, vmax), rasterized=True)
+        a.set_aspect("equal"); a.set_xticks([]); a.set_yticks([])
+        a.set_title(title, fontsize=8)
+        axes.append(a)
+    cb = fig.colorbar(sc, cax=fig.add_subplot(gs[0, 2]))
+    cb.set_label(r"$\Delta d$ over the compressive path")
+    return fig, "compression.png"
+
+
 def main():
     plt = _plt()
     out = RESULTS / "paper"
@@ -229,7 +363,8 @@ def main():
     if "--copy" in sys.argv:
         copy = Path(sys.argv[sys.argv.index("--copy") + 1])
     for make in (tension_fem, tension_load, tension_damage, beam_load,
-                 beam_damage, beam_size, double_notch):
+                 beam_damage, beam_size, double_notch, torsion, torsion_fracture,
+                 compression):
         fig, name = make(plt)
         path = out / name
         fig.savefig(path, bbox_inches="tight")
