@@ -20,7 +20,8 @@ Why periodic
 free means ``P N = 0``, leaving ``\Sigma N = (W - K) N \neq 0``. A homogeneous
 body filling a periodic cell has no boundary at all, so any drift measured here
 is the discretisation and nothing else. Two other configurations were tried and
-rejected -- see the note in ``CLAUDE.md``.
+rejected: a free spinning disk, where the drift is physical rather than
+numerical, and rigid translation, which every scheme conserves trivially.
 
 Normalisation
 -------------

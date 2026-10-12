@@ -12,6 +12,7 @@ target/
 .DS_Store
 .idea/
 .vscode/
+.continue/
 
 # staging area for code being merged into src/
 _incoming/
@@ -20,3 +21,10 @@ _incoming/
 # is 20 MB; it exists so a three-hour run can be re-plotted without re-running,
 # which is worth having on disk and not in the history.
 *.npz
+
+# Trained weights, pickled datasets and generated figures for the
+# diffeomorphism-network project. The code and the run configs are tracked;
+# the outputs are not, because they are 150 MB and reproducible from them.
+projects/nsf_domain_mapping/**/*.pt
+projects/nsf_domain_mapping/**/*.pkl
+projects/nsf_domain_mapping/**/*.png

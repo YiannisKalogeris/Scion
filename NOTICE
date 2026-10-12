@@ -1,0 +1,20 @@
+Scion
+Copyright 2026 Ioannis Kalogeris
+
+This product includes software developed by Ioannis Kalogeris (NTUA).
+
+Portions of this software were implemented following algorithms published in:
+
+  Liu, Wang & Li, "CK-MPM: A Compact-Kernel Material Point Method",
+  ACM Transactions on Graphics 44(4), 2025. The reference implementation is
+  licensed under the Apache License, Version 2.0.
+  See src/scion/materials/hencky.py and src/scion/materials/fluid.py.
+
+  O'Hare, Gourgiotis, Coombs & Augarde, "An implicit Material Point Method for
+  micropolar solids undergoing large deformations", Computer Methods in Applied
+  Mechanics and Engineering 419 (2024) 116668, published under CC BY.
+  See src/scion/discretization/mpm/implicit.py and
+  src/scion/discretization/mpm/micropolar.py.
+
+The underlying constitutive models predate both references and are cited
+individually in the docstring of each class.

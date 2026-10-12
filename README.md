@@ -15,13 +15,18 @@ Scion/
 │   │   ├── fem/                 #     Finite Element Method (+ nonlinear assembly, quadrature state)
 │   │   ├── mpm/                 #     Material Point Method (APIC/PIC/FLIP, GIMP, GPIC, Warp backend)
 │   │   ├── fdm/                 #     Finite Difference Method
-│   │   ├── fvm/                 #     Finite Volume Method (scaffold)
+│   │   ├── fvm/                 #     Finite Volume Method (scalar + 1-D Euler)
 │   │   └── sph/                 #     Smoothed Particle Hydrodynamics (scaffold)
 │   ├── materials/               #   Constitutive models
 │   │   ├── fracture/            #     Phase-field brittle fracture (composable)
 │   │   ├── plasticity/          #     Rate-independent plasticity (composable)
+│   │   ├── damage/              #     Continuum damage (local and gradient-regularised)
+│   │   ├── micropolar*.py       #     Cosserat elasticity and elastoplasticity
+│   │   ├── eshelby.py           #     Material-manifold quantities, J-integral
 │   │   └── notation.py          #     Mandel / Voigt tensor conversions
 │   ├── multiphysics/            #   Coupled two-field problems (staggered drivers)
+│   ├── shakedown/               #   Direct methods (Melan, Linear Matching, Sloan elements)
+│   ├── fatigue/                 #   Initiation life: counting, life curves, accumulation
 │   ├── solvers/                 #   Linear, Newton-Raphson, staggered, bound-constrained
 │   ├── boundary/                #   Dirichlet / Neumann BC handling
 │   ├── geometry/                #   Shape generation, SDF rendering, harmonic maps
@@ -35,6 +40,8 @@ Scion/
 │       └── cpp/                 #     pybind11/Eigen C++ extension
 │
 ├── projects/                    # Research projects (consumers of the library)
+│   ├── configurational_mpm/     #   Eshelby stress and pseudomomentum in MPM
+│   ├── diffusion_preconditioner/#   Two-level preconditioning, with measured tables
 │   └── nsf_domain_mapping/      #   Neural Spline Flow domain-to-square mapping
 │
 ├── tests/                       # Unit and verification tests
@@ -66,7 +73,7 @@ Scion/
 pip install -e ".[dev]"          # core library
 pip install -e ".[all]"          # everything
 
-pytest tests/                    # run the test suite
+pytest tests/ -q                 # 1311 tests, ~2 minutes
 
 python examples/fem/poisson_2d.py
 python -m examples.mpm.two_disks
@@ -82,7 +89,11 @@ python -m examples.plasticity.thick_cylinder
 | `core` | Domain, Field, DOF management, logging |
 | `mesh` | Mesh generation and import (structured, unstructured, gmsh) |
 | `discretization.fem` | Linear and nonlinear assembly, persistent quadrature-point state |
-| `discretization.mpm` | Material Point Method with NumPy and Warp backends |
+| `discretization.mpm` | Material Point Method with NumPy and Warp backends, explicit / implicit / micropolar |
+| `discretization.fdm` | Finite differences by Kronecker-sum assembly, verified by observed order |
+| `discretization.fvm` | Scalar advection-diffusion and 1-D Euler (HLL, HLLC, exact Riemann) |
+| `shakedown` | Melan, Linear Matching and Sloan equilibrium elements |
+| `fatigue` | Rainflow counting, life curves, damage accumulation |
 | `materials` | Elastic, thermal, hyperelastic, phase-field fracture, plasticity |
 | `multiphysics` | Coupled two-field problems with staggered solution |
 | `solvers` | Direct, Krylov, Newton-Raphson, staggered, bound-constrained |
@@ -201,6 +212,13 @@ Physics modules are validated against closed-form solutions or published benchma
 | Two-disk collision (MPM) | Sulsky et al. | Momentum conserved to 1e-14 |
 | GPIC bar in gravity | Nguyen et al. (2020) | 1.6% on the tip deflection against the analytical rod |
 | 1-D crack profiles | `exp(-\|x\|/ℓ)` (AT2), `(1-\|x\|/2ℓ)²` (AT1) | First-order convergence; surface energy recovers `Gc × length` |
+| Shakedown of a thick cylinder | Analytical collapse-governed limit | 99.7%, approached from below |
+| Sod shock tube | Toro's exact star state | `p* = 0.30313`, `u* = 0.92745`, shock at `x = 0.850431` |
+| FDM schemes | Theoretical order of accuracy | Observed order matches theory for every scheme |
+| Rainflow counting | ASTM E1049-85 worked example | Exact |
+| AMG-preconditioned CG | Mesh-independence on Poisson | 10/11/14/14 iterations over a 36× growth in unknowns |
+| Curved cantilever (micropolar MPM) | Bathe & Bolourchi; Kozar & Ibrahimbegović | Within 2.6% of the analytical solution |
+| Torsional rigidity (micropolar) | `K = GJ`, exact for a circular bar | 0.36% at zero internal length |
 
 ## Optional Dependencies
 
@@ -235,7 +253,7 @@ Stated explicitly rather than discovered at runtime — each of these raises wit
 - **Plane stress plasticity** requires solving for `ε₃₃` inside the return map; only plane strain and 3-D are supported.
 - **Mohr–Coulomb and Tresca** have surfaces with corners and need a multi-surface return map.
 - **Armstrong–Frederick kinematic hardening** cannot be eliminated into the relative-stress form used by the return map.
-- **Drucker–Prager with zero dilatancy** has no admissible return for trial states beyond the cone apex; a tension cutoff is needed.
+- **Drucker–Prager with zero dilatancy** beyond the cone apex. The general apex return *is* implemented; this case stays refused for a structural reason — at zero dilatancy the flow rule is purely deviatoric, so nothing can carry the pressure back to the tip.
 - **GPIC contact** is no-slip only, and the background grid must resolve the FE mesh.
 - Phase-field fracture uses **displacement control**, which cannot follow a true snap-back.
 
@@ -244,12 +262,15 @@ Stated explicitly rather than discovered at runtime — each of these raises wit
 - [x] Material Point Method (explicit APIC, GIMP, GPIC) with GPU backend
 - [x] Phase-field brittle fracture (AT1/AT2, three energy splits, three couplings)
 - [x] J2 and Drucker–Prager plasticity with consistent tangents
+- [x] Micropolar (Cosserat) elasticity, elastoplasticity and phase-field fracture
+- [x] Shakedown and limit analysis; fatigue initiation life; continuum damage
+- [x] Configurational mechanics: Eshelby stress, J-integral, explicit MPM cracks
 - [x] Nonlinear material models (Neo-Hookean, hyperelastic)
 - [ ] Plane-stress return mapping
 - [ ] Multi-surface return map (Mohr–Coulomb, Tresca, tension cutoff)
 - [ ] Arc-length control for snap-back
-- [ ] Implicit MPM
-- [ ] FVM assembler (Godunov, Roe flux schemes)
+- [x] Implicit MPM (quasi-static Newton, load-stepped, verified by manufactured solution)
+- [x] FVM assembler (upwind/central, MUSCL, HLL/HLLC/exact Riemann; Roe deliberately refused)
 - [ ] SPH assembler with neighbour search
 - [ ] Transient solvers (implicit/explicit time integration)
 - [ ] Parallel assembly with MPI (mpi4py)
@@ -257,6 +278,10 @@ Stated explicitly rather than discovered at runtime — each of these raises wit
 - [ ] Neural operator architectures (DeepONet, FNO)
 - [ ] Diffusion models for Bayesian inference
 
+## Citing
+
+If you use this library, please cite the repository.
+
 ## License
 
-MIT
+Apache License 2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE).

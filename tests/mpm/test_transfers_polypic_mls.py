@@ -3,7 +3,8 @@ PolyPIC and MLS-MPM transfers.
 
 Two of the four variants the configurational-forces paper ranks. The other two,
 CPDI and BSCPDI, are particle-domain schemes and cannot be expressed through the
-tensor-product ``Basis`` interface at all -- see the note in CLAUDE.md.
+tensor-product ``Basis`` interface at all: a convected parallelogram stops being
+axis-aligned the moment ``F`` rotates, so its weight is not separable.
 
 What is asserted here is bounded by what was actually verified. PolyPIC is
 supported at degree 1 only; degree 2 and above are refused, and that refusal is

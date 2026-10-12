@@ -23,9 +23,10 @@ in compression, which is exactly the regime this module is for.
 
 Provenance
 ----------
-Ported from CK-MPM (Liu, Wang & Li, *CK-MPM: A Compact-Kernel Material Point
-Method*, ACM TOG 44(4), 2025; Apache-2.0), reimplemented in batched NumPy from
-its CUDA sources. The underlying models are older and are cited on each class.
+Follows the CK-MPM formulation (Liu, Wang & Li, *CK-MPM: A Compact-Kernel
+Material Point Method*, ACM TOG 44(4), 2025; Apache-2.0), implemented here in
+batched NumPy rather than as the scalar per-particle CUDA kernels of the
+reference. See NOTICE. The underlying models are older and are cited on each class.
 """
 
 from __future__ import annotations
@@ -229,7 +230,8 @@ class DruckerPragerSand(ReturnMap):
     -----------
     This is a genuine admissible return at the tip, which is what the
     small-strain :class:`~scion.materials.plasticity.yield_criteria.DruckerPrager`
-    return map does *not* have -- see the refusal in ``CLAUDE.md``. It works
+    return map does *not* have, and which it refuses rather than
+    approximating. It works
     here only because the tip of the cone in log-strain space is a single point
     that the projection can name outright, and because ``log_jp`` gives the
     discarded volume somewhere to live. It does not lift that refusal: this is

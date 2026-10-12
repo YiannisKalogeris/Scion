@@ -37,7 +37,8 @@ Cost
 builds for one gradient. That is correct by construction and far too slow for
 production -- it is here to answer whether the volume term matters, and to serve
 as the reference any analytic formula would have to match. Two closed forms were
-tried against it and neither reproduced it; see the note in ``CLAUDE.md``.
+tried against it and neither reproduced it, the second being worse than the
+first, so the finite-difference route stands until one is derived properly.
 """
 
 from __future__ import annotations
