@@ -224,27 +224,49 @@ Physics modules are validated against closed-form solutions or published benchma
 
 ```toml
 [project.optional-dependencies]
-ml   = ["torch>=2.0"]
-jax  = ["jax>=0.4", "jaxlib>=0.4", "equinox>=0.11", "optax>=0.2", "diffrax>=0.5"]
-warp = ["warp-lang>=1.0"]
+ml      = ["torch>=2.0"]
+jax     = ["jax>=0.4", "jaxlib>=0.4", "equinox>=0.11", "optax>=0.2", "diffrax>=0.5"]
 meshing = ["gmsh>=4.11"]
-viz  = ["pyvista", "meshio"]
-dev  = ["pytest>=7.0", "pytest-benchmark", "ruff", "mypy"]
-all  = ["scion[ml,jax,warp,meshing,viz,dev,docs]"]
+rust    = ["maturin>=1.0"]
+docs    = ["sphinx", "sphinx-rtd-theme"]
+dev     = ["pytest>=7.0", "pytest-benchmark", "ruff", "mypy"]
+all     = ["scion[ml,jax,meshing,dev,docs]"]
 ```
+
+Visualisation (`pyvista`, `meshio`) is a hard dependency rather than an extra.
+The GPU MPM backend needs `pip install warp-lang`, which is not an extra
+because the package is not required to import anything in `scion`.
 
 ## Building the Accelerated Backends
 
-```bash
-# Rust
-cd src/scion/_backends/rust && maturin develop --release
+The library runs with no compiler: every native kernel has a NumPy fallback,
+and the pure-Python path is the reference implementation the compiled one is
+tested against. Building the extension is an optimisation, never a
+prerequisite.
 
-# C++
-cd src/scion/_backends/cpp && mkdir build && cd build && cmake .. && make
+```bash
+# Rust kernels (crates/scion-mpm is the core, crates/scion-mpm-py the binding)
+cargo test -p scion-mpm --release            # core crate, no Python involved
+cd crates/scion-mpm-py && maturin build --release -i python3
+pip install --force-reinstall target/wheels/scion_mpm_py-*.whl
 
 # Warp needs no build step; GPU execution requires a CUDA device
 pip install warp-lang
 ```
+
+If your interpreter's architecture differs from the host's — an x86_64
+Anaconda Python on an arm64 Mac, say — add the matching Rust target first, or
+the build fails with the opaque `can't find crate for std`:
+
+```bash
+rustup target add x86_64-apple-darwin
+```
+
+`crates/` sits at the repo root rather than inside the package so the core
+crate carries no Python dependency and can be benchmarked on its own.
+`src/scion/_backends/` holds the dispatch layer plus a dormant C++ stub and an
+element-stiffness demo; **neither compiled backend there is implemented**, and
+nothing in the library calls them.
 
 ## Known Limitations
 

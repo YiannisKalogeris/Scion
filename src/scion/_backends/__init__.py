@@ -7,13 +7,16 @@ pure-Python/NumPy/SciPy otherwise.
 
 Rust Backend
 ------------
-Built with ``maturin`` and exposed as ``scion._backends._rust_core``.
-Intended for: sparse matrix assembly, kernel evaluations, neighbour search.
+The kernels live in ``crates/`` at the repo root, outside the Python package
+so the core crate can be unit tested with ``cargo test`` and no interpreter in
+the loop. Built with ``maturin`` and exposed as the top-level ``scion_rust``.
+Currently: the MPM particle-to-grid scatter, wrapped for use in
+``scion.discretization.mpm.rust``.
 
 C++ Backend
 -----------
-Built with ``pybind11`` and exposed as ``scion._backends._cpp_core``.
-Intended for: element-level stiffness routines, quadrature loops.
+Not implemented. ``cpp/`` holds a pybind11 stub and ``rust/`` a dormant
+element-stiffness demo, neither of which is built or called by anything.
 """
 
 from scion._backends.dispatch import get_backend

@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import sys
 import time
+from collections import deque
 
 import numpy as np
 
@@ -164,27 +165,84 @@ def build(a, l_b, *, cells_per_radius=CELLS_PER_RADIUS, ppc=PPC,
                 a=a, L=L, dx=dx, theta=theta, centre=c, nodes=xyz)
 
 
+def notch_distance(x, c, a, L, depth):
+    """Distance to the annular notch, in the ``(r, z)`` half-plane.
+
+    The notch is the segment from the root at ``r = a - depth`` out to the free
+    surface at ``r = a``, so the distance is measured in a half-plane behind
+    the root and radially ahead of it -- a blunt annular crack rather than a
+    damaged torus.
+
+    Factored out because two callers need the *same* predicate: the seeding
+    below, and the regional energy shares in `regional_sums`. A mask that drifts
+    from the band it is meant to exclude would silently misattribute energy.
+    """
+    r = np.hypot(x[:, 0] - c[0], x[:, 1] - c[1])
+    root, zc = a - depth, 0.5 * L
+    return np.where(r >= root, np.abs(x[:, 2] - zc),
+                    np.hypot(r - root, x[:, 2] - zc))
+
+
+def notch_width(dx, ell, width_factor=0.25):
+    """Half-thickness of the seeded band -- the ``r_0`` the other maps use."""
+    return max(width_factor * ell, dx)
+
+
 def seed_circumferential_notch(pf, parts, c, a, L, dx, ell, gc, depth,
                                amplitude=1.0e3, width_factor=0.25):
-    """An annular notch at mid-length, seeded through the history field.
-
-    The same construction as the plane notches elsewhere, carried out in the
-    ``(r, z)`` half-plane: the notch is the segment from the root at
-    ``r = a - depth`` out to the free surface at ``r = a``, and the distance is
-    a half-plane behind the root and radial ahead of it, so the seeded field is
-    a blunt annular crack rather than a damaged torus.
-    """
-    r = np.hypot(parts.x[:, 0] - c[0], parts.x[:, 1] - c[1])
-    z = parts.x[:, 2]
-    root, zc = a - depth, 0.5 * L
-    beyond = r >= root
-    dist = np.where(beyond, np.abs(z - zc), np.hypot(r - root, z - zc))
-    width = max(width_factor * ell, dx)
+    """An annular notch at mid-length, seeded through the history field."""
+    dist = notch_distance(parts.x, c, a, L, depth)
+    width = notch_width(dx, ell, width_factor)
     H0 = np.zeros(parts.n)
     inside = dist <= width
     H0[inside] = amplitude * gc / (2.0 * ell) * (1.0 - dist[inside] / width)
     pf.H = H0
     return pf
+
+
+#: Regions the driving energy is summed over, in the order `regional_sums`
+#: returns them. ``whole`` is what the tables report.
+REGIONS = ("whole", "band", "beyond_band", "beyond_2band")
+
+
+def regional_sums(psi, dist, r0):
+    """``(3, 4)``: each driving-energy term summed over each of `REGIONS`.
+
+    Twelve floats per load step, and that is the point. The full per-particle
+    densities of the production bar are 25 MB a step, `run_load_path` rewrites
+    its checkpoint after *every* step, and the torsion runs checkpoint into
+    ``results/`` under ~/Desktop, which macOS syncs -- carrying every step's
+    densities through there would add some 400 MB to a file already implicated
+    in the loss of one run to a refused rename. The map itself is wanted at the
+    peak alone, which `_DensityRecorder` keeps in memory instead.
+    """
+    masks = (slice(None), dist <= r0 + 1e-9, dist > r0 + 1e-9, dist > 2.0 * r0)
+    return np.stack([psi[:, m].sum(axis=1) for m in masks], axis=1)
+
+
+class _DensityRecorder:
+    """``on_step`` for `run_load_path`: regional sums every step, map at the peak.
+
+    The returned sums go into the history and the checkpoint. The full
+    densities are held for the last ``keep`` steps only, so the caller can
+    write the one at the peak once ``argmax`` is known; ``stop_past_peak``
+    stops the path a step or two past the turnover, which is what keeps the
+    peak inside that window.
+    """
+
+    def __init__(self, dist, r0, keep=4):
+        self.dist, self.r0 = dist, r0
+        self.maps, self.n = deque(maxlen=keep), 0
+
+    def __call__(self, pf, stepper, parts):
+        psi = np.stack(pf.driving_densities())          # (3, n_particles)
+        self.maps.append((self.n, psi))
+        self.n += 1
+        return regional_sums(psi, self.dist, self.r0)
+
+    def map_at(self, k):
+        """Densities at step ``k``, or None once it has left the window."""
+        return next((m for i, m in self.maps if i == k), None)
 
 
 def torque(s):
@@ -307,7 +365,7 @@ def fracture(l_b_over_a, *, cells_per_radius=CELLS_PER_RADIUS,
              length_over_a=LENGTH_OVER_A, steps=FRACTURE_STEPS,
              surface_shear=FRACTURE_SHEAR, progress=None, stop_past_peak=0.9,
              notch_depth_over_a=NOTCH_DEPTH_OVER_A, linear_solver=None,
-             checkpoint=None):
+             checkpoint=None, tag=""):
     """Circumferentially notched bar twisted to failure.
 
     The conjugate quantity is a torque, so ``run_load_path`` is given an
@@ -325,17 +383,40 @@ def fracture(l_b_over_a, *, cells_per_radius=CELLS_PER_RADIUS,
     def torque_of(f):
         return (r[:, 0] * f[i * 6 + 1] - r[:, 1] * f[i * 6 + 0]).sum()
 
+    dist = notch_distance(s["parts"].x, s["centre"], a, s["L"],
+                          notch_depth_over_a * a)
+    r0 = notch_width(s["dx"], 4.0 * s["dx"])
+    rec = _DensityRecorder(dist, r0)
     out = run_load_path(s["pf"], s["stepper"], s["parts"], i, 1, steps,
                         progress=progress or f"torsion l_b/a={l_b_over_a:g}",
                         reaction=torque_of, stop_past_peak=stop_past_peak,
-                        checkpoint=checkpoint)
+                        checkpoint=checkpoint, on_step=rec)
     T = np.abs(np.asarray(out["load"]))
     k = int(np.argmax(T))
     out.update(l_b_over_a=l_b_over_a, theta=s["theta"], a=a, L=s["L"],
                dx=s["dx"], peak_torque=float(T[k]), peak_step=k,
                torque=T, shares_at_peak=out["shares"][k],
                d=s["pf"].tables.interpolate(s["pf"].d),
-               X0=s["parts"].x.copy(), centre=s["centre"])
+               X0=s["parts"].x.copy(), centre=s["centre"],
+               notch_r0=r0, regional_at_peak=None)
+    # A run resumed from a checkpoint written before this recorder existed
+    # restores an empty extra history and then appends from the resume step, so
+    # ``extra`` is shorter than the load path and indexing it by the global step
+    # would read the wrong one. Loud rather than plausible.
+    ex = out["extra"]
+    if len(ex) == len(T):
+        out["regional_at_peak"] = np.asarray(ex[k])
+    else:
+        print(f"      regional shares unavailable: {len(ex)} recorded against "
+              f"{len(T)} steps (resumed across the change that added them)",
+              flush=True)
+    psi = rec.map_at(k)
+    if psi is not None:
+        np.savez_compressed(RESULTS / f"torsion3d_dens{tag}_lb{l_b_over_a:g}.npz",
+                            X0=s["parts"].x.copy(), dens=psi, dist=dist, r0=r0,
+                            t=out["disp"][k], peak_step=k,
+                            l_b_over_a=l_b_over_a, centre=s["centre"],
+                            a=a, L=s["L"], dx=s["dx"])
     return out
 
 
@@ -398,7 +479,7 @@ def run_fracture(cells_per_radius=CELLS_PER_RADIUS,
         r = fracture(f, cells_per_radius=cells_per_radius,
                      length_over_a=length_over_a,
                      notch_depth_over_a=notch_depth_over_a,
-                     linear_solver=ls,
+                     linear_solver=ls, tag=tag,
                      checkpoint=RESULTS / f"ckpt_torsion{tag}_lb{f:g}.npz")
         if ls is not None:
             r["krylov_solves"], r["krylov_iters"] = ls.n_solves, ls.total_iterations
@@ -429,6 +510,25 @@ def run_fracture(cells_per_radius=CELLS_PER_RADIUS,
               f"{r['reached']:8.3f}")
     print(f"\n  cracked at the notch in every row: "
           f"{all(r['d_notch'] > r['d_clamp'] for r in rows)}")
+    # The whole-specimen shares above include the seeded band, and inside it
+    # g(d) -> 0 has removed the very stress whose symmetry would force the
+    # microrotation onto the continuum rotation -- so skew(E) there is
+    # evaluated on nearly free kinematics while W_rel is reported undegraded.
+    # At l_b = 0 that is the whole of the W_rel column: measured on an elastic
+    # surrogate, 0.229 over the whole bar against 0.0012 with no notch at all.
+    # Read the micropolar contribution from the band-excluded rows.
+    if all(r["regional_at_peak"] is not None for r in rows):
+        print(f"\n  shares at the peak by region (r_0 = seeded "
+              f"half-thickness {rows[0]['notch_r0']:.4g})")
+        print(f"  {'l_b/a':>6} {'region':>13} {'W_iso+':>10} {'W_rel':>10} "
+              f"{'W_curv':>10}")
+        for r in rows:
+            for j, name in enumerate(REGIONS):
+                g = r["regional_at_peak"][:, j]
+                tot = max(float(g.sum()), 1e-300)
+                print(f"  {r['l_b_over_a']:6.2f} {name:>13} "
+                      f"{g[0] / tot:10.4f} {g[1] / tot:10.4g} "
+                      f"{g[2] / tot:10.4g}")
     np.savez_compressed(RESULTS / f"torsion3d_fracture{tag}.npz",
                         l_b_over_a=np.array([r["l_b_over_a"] for r in rows]),
                         peak=np.array([r["peak_torque"] for r in rows]),
@@ -440,6 +540,12 @@ def run_fracture(cells_per_radius=CELLS_PER_RADIUS,
                         X0=rows[0]["X0"], centre=rows[0]["centre"],
                         a=RADIUS, dx=rows[0]["dx"], L=rows[0]["L"],
                         cells_per_radius=cells_per_radius,
+                        notch_r0=rows[0]["notch_r0"],
+                        regions=np.array(REGIONS),
+                        regional_at_peak=np.array(
+                            [r["regional_at_peak"] for r in rows]
+                            if all(r["regional_at_peak"] is not None
+                                   for r in rows) else []),
                         minutes=(time.time() - t0) / 60)
     print(f"\n  {(time.time() - t0) / 60:.0f} min")
     return rows

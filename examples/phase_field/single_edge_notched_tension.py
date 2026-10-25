@@ -180,9 +180,17 @@ def build(coupling="hybrid", split="spectral", dissipation="AT2",
     mesh = domain.mesh
     bottom, top = mesh.boundary_nodes("bottom"), mesh.boundary_nodes("top")
     problem.u.prescribe(bottom, 0, 0.0)
-    problem.u.prescribe(bottom, 1, 0.0)
-    problem.u.prescribe(top, 0, 0.0)
-    problem.set_displacement_control(top, 1, 1.0)     # factor = u in mm
+    # The elongation is split symmetrically between the two edges, matching the
+    # micropolar rows, so the whole study describes one boundary value problem.
+    # Here it is a rigid translation and changes nothing -- this is a mesh, with no background grid to drift against --
+    # which is exactly what makes it safe to unify on.
+    problem.set_displacement_control(bottom, 1, -0.5)
+    problem.set_displacement_control(top, 1, 0.5)     # factor = u in mm
+    # The reported reaction is the force on the LOADED edge. Both edges are now
+    # control dofs and their reactions cancel by equilibrium, so the control set
+    # is narrowed back to the top before any step runs.
+    problem._control_dofs = np.array(
+        sorted(problem.u.dof_map.dof(int(n), 1) for n in top), dtype=np.int64)
 
     H0 = notch_history(problem, ell)
     problem.state["H"] = H0

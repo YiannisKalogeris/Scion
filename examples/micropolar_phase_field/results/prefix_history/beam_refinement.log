@@ -1,0 +1,52 @@
+      dx=0.005 l_b=0  lambda 0.083  load      0.2037  d_max 1.000  cuts  0     6.1 min elapsed, ~ 66.7 min left
+      dx=0.005 l_b=0  lambda 0.167  load      0.4056  d_max 1.000  cuts  0    12.1 min elapsed, ~ 60.7 min left
+      dx=0.005 l_b=0  lambda 0.250  load      0.6035  d_max 1.000  cuts  0    18.1 min elapsed, ~ 54.4 min left
+      dx=0.005 l_b=0  lambda 0.333  load      0.7949  d_max 1.000  cuts  0    26.1 min elapsed, ~ 52.2 min left
+      dx=0.005 l_b=0  lambda 0.417  load      0.9771  d_max 1.000  cuts  0    36.7 min elapsed, ~ 51.4 min left
+      dx=0.005 l_b=0  lambda 0.500  load       1.146  d_max 1.000  cuts  0    49.5 min elapsed, ~ 49.5 min left
+      dx=0.005 l_b=0  lambda 0.583  load       1.295  d_max 1.000  cuts  0    68.5 min elapsed, ~ 49.0 min left
+      dx=0.005 l_b=0  lambda 0.667  load       1.407  d_max 1.000  cuts  0   112.1 min elapsed, ~ 56.0 min left
+      dx=0.005 l_b=0  lambda 0.750  load       1.325  d_max 1.000  cuts  0   223.7 min elapsed, ~ 74.6 min left
+      dx=0.005 l_b=0  lambda 0.833  load      0.9856  d_max 1.000  cuts  0   306.7 min elapsed, ~ 61.3 min left  [past peak, stopping]
+      dx=0.005 l_b=0.2  lambda 0.083  load        1.26  d_max 1.000  cuts  0     6.6 min elapsed, ~ 72.3 min left
+      dx=0.005 l_b=0.2  lambda 0.167  load       2.466  d_max 1.000  cuts  0    11.8 min elapsed, ~ 59.1 min left
+      dx=0.005 l_b=0.2  lambda 0.250  load       3.557  d_max 1.000  cuts  0    20.6 min elapsed, ~ 61.7 min left
+      dx=0.005 l_b=0.2  lambda 0.333  load       4.478  d_max 1.000  cuts  0    31.1 min elapsed, ~ 62.2 min left
+      dx=0.005 l_b=0.2  lambda 0.417  load       5.145  d_max 1.000  cuts  0   104.5 min elapsed, ~146.3 min left
+      dx=0.005 l_b=0.2  lambda 0.500  load       4.877  d_max 1.000  cuts  0   152.7 min elapsed, ~152.7 min left
+      dx=0.005 l_b=0.2  lambda 0.583  load     0.00508  d_max 1.000  cuts  0   191.1 min elapsed, ~136.5 min left  [past peak, stopping]
+
+        dx  l/dx  peak l_b=0  peak l_b=h/2   ratio  W_curv  pk steps   minutes
+  ------------------------------------------------------------------------------
+   0.01000   4.0       294.8        1050.3  3.5633  0.4458    8/5     nan/nan 
+   0.00500   8.0       281.5        1029.0  3.6554  0.4203    7/4     307/191 
+
+  Loads per unit thickness. Differences relative to dx = 0.01:
+    dx = 0.005: l_b=0 -4.50%, l_b=h/2 -2.03%, ratio +2.58%
+      dx=0.00625 l_b=0  lambda 0.083  load      0.2556  d_max 1.000  cuts  0     3.6 min elapsed, ~ 40.0 min left
+      dx=0.00625 l_b=0  lambda 0.167  load       0.509  d_max 1.000  cuts  0     7.2 min elapsed, ~ 36.2 min left
+      dx=0.00625 l_b=0  lambda 0.250  load      0.7574  d_max 1.000  cuts  0    10.8 min elapsed, ~ 32.5 min left
+      dx=0.00625 l_b=0  lambda 0.333  load      0.9979  d_max 1.000  cuts  0    15.6 min elapsed, ~ 31.2 min left
+      dx=0.00625 l_b=0  lambda 0.417  load       1.227  d_max 1.000  cuts  0    21.6 min elapsed, ~ 30.2 min left
+      dx=0.00625 l_b=0  lambda 0.500  load       1.439  d_max 1.000  cuts  0    28.7 min elapsed, ~ 28.7 min left
+      dx=0.00625 l_b=0  lambda 0.583  load       1.627  d_max 1.000  cuts  0    45.6 min elapsed, ~ 32.6 min left
+      dx=0.00625 l_b=0  lambda 0.667  load       1.768  d_max 1.000  cuts  0    63.8 min elapsed, ~ 31.9 min left
+      dx=0.00625 l_b=0  lambda 0.750  load       1.687  d_max 1.000  cuts  0    94.3 min elapsed, ~ 31.4 min left
+      dx=0.00625 l_b=0  lambda 0.833  load       1.267  d_max 1.000  cuts  0   145.8 min elapsed, ~ 29.2 min left  [past peak, stopping]
+      dx=0.00625 l_b=0.2  lambda 0.083  load       1.576  d_max 1.000  cuts  0     3.3 min elapsed, ~ 35.8 min left
+      dx=0.00625 l_b=0.2  lambda 0.167  load       3.085  d_max 1.000  cuts  0     6.5 min elapsed, ~ 32.6 min left
+      dx=0.00625 l_b=0.2  lambda 0.250  load       4.451  d_max 1.000  cuts  0    12.0 min elapsed, ~ 36.0 min left
+      dx=0.00625 l_b=0.2  lambda 0.333  load       5.603  d_max 1.000  cuts  0    18.3 min elapsed, ~ 36.6 min left
+      dx=0.00625 l_b=0.2  lambda 0.417  load        6.44  d_max 1.000  cuts  0    28.7 min elapsed, ~ 40.2 min left
+      dx=0.00625 l_b=0.2  lambda 0.500  load       6.204  d_max 1.000  cuts  0    55.7 min elapsed, ~ 55.7 min left
+      dx=0.00625 l_b=0.2  lambda 0.583  load     0.01034  d_max 1.000  cuts  0    74.0 min elapsed, ~ 52.8 min left  [past peak, stopping]
+
+        dx  l/dx  peak l_b=0  peak l_b=h/2   ratio  W_curv  pk steps   minutes
+  ------------------------------------------------------------------------------
+   0.01000   4.0       294.8        1050.3  3.5633  0.4458    8/5     nan/nan 
+   0.00625   6.4       282.9        1030.3  3.6418  0.4268    7/4     146/74  
+   0.00500   8.0       281.5        1029.0  3.6554  0.4203    7/4     307/191 
+
+  Loads per unit thickness. Differences relative to dx = 0.01:
+    dx = 0.00625: l_b=0 -4.02%, l_b=h/2 -1.90%, ratio +2.20%
+    dx = 0.005: l_b=0 -4.50%, l_b=h/2 -2.03%, ratio +2.58%

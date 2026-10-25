@@ -1,0 +1,15 @@
+# Rust workspace for Scion's optional native kernels.
+#
+# The Python package does not need this: `pip install -e .` stays
+# compiler-free, and `scion` imports the compiled module only if it is
+# present. See src/scion/discretization/mpm/rust/__init__.py.
+[workspace]
+members = ["crates/scion-mpm", "crates/scion-mpm-py"]
+# the dormant scaffold under src/scion/_backends/rust is a separate,
+# standalone crate; without this it reports "believes it's in a workspace"
+exclude = ["src/scion/_backends/rust"]
+resolver = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1

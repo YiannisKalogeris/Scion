@@ -88,6 +88,13 @@ class PhaseFieldFractureProblem(TwoFieldProblem):
         n_nodes = domain.n_nodes
         self.u = Field("u", n_nodes, self.dim)
         self.d = Field("d", n_nodes, 1)
+        # The damage at the last *committed* load step. The irreversibility
+        # bound is measured against this and not against the previous
+        # staggered sweep -- the same reason ``H`` is taken against
+        # ``state.committed("H")``: a sweep that is later discarded must not
+        # leave a permanent mark. Clamping against the running field makes the
+        # converged answer depend on how the stagger loop reached it.
+        self._d_committed = np.zeros(n_nodes)
         self._u_base: dict[int, float] = {}
 
         self._build_quadrature_tables()
@@ -219,8 +226,9 @@ class PhaseFieldFractureProblem(TwoFieldProblem):
             if np.linalg.norm(delta) <= 1e-10 * max(1.0, np.linalg.norm(d)):
                 break
 
-        # irreversibility: damage never decreases, so cracks cannot heal
-        d = np.clip(np.maximum(d, self.d.values), 0.0, 1.0)
+        # irreversibility: damage never decreases, so cracks cannot heal.
+        # Against the committed step, for the reason given on ``_d_committed``.
+        d = np.clip(np.maximum(d, self._d_committed), 0.0, 1.0)
         # second convergence test: a damage field that has stopped moving means
         # the cycle is done, whatever shape the energy decay happens to have
         self._damage_change = float(np.abs(d - self.d.values).max())
@@ -280,9 +288,15 @@ class PhaseFieldFractureProblem(TwoFieldProblem):
 
     def end_step(self, result) -> None:
         self.state.commit()
+        self._d_committed = self.d.values.copy()
 
     def reject_step(self, step: int) -> None:
+        # ``d`` has to be rolled back with the history. Restoring only the
+        # quadrature state leaves the damage grown by the failed attempt in
+        # place, and since damage is monotone it can never be undone -- the
+        # retry then starts from a more broken body at a smaller increment.
         self.state.restore()
+        self.d.values = self._d_committed.copy()
 
     def report(self) -> dict:
         reac = getattr(self, "_reaction", np.zeros(0))

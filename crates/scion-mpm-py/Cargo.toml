@@ -1,0 +1,14 @@
+[package]
+name = "scion-mpm-py"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+name = "scion_rust"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }
+numpy = "0.22"
+scion-mpm = { path = "../scion-mpm" }

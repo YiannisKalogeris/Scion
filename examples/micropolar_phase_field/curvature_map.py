@@ -44,7 +44,7 @@ import numpy as np
 
 from ._common import RESULTS, run_load_path, seed_particles
 
-TABLE = {"beam": 0.4458, "tension": 2.096e-3}     # W_curv shares, post-fix sweeps
+TABLE = {"beam": 0.4499, "tension": 2.736e-3}     # W_curv shares, post-fix sweeps
 
 
 def _densities(pf, stepper, parts):

@@ -47,7 +47,7 @@ from .notched_beam import (DEPTH, DX, ELL_PF, NOTCH_DEPTH, NOTCH_X, SPAN,
 
 L_B = 0.10                      # the material's internal length, fixed
 H_REF = DEPTH                   # the size the existing sweep was run at
-SIZES = (0.2, 0.4, 0.8)
+SIZES = (0.2, 0.3, 0.4, 0.6)
 
 
 def geometry(h):

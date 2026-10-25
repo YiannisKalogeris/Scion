@@ -129,9 +129,17 @@ def build_classical_mpm(ell_pf, dx, ppc=PPC):
             f"boundary conditions select nothing and every reaction reads "
             f"zero. Choose dx that divides {SIDE}.")
     p.u.prescribe(bot, 0, 0.0)
-    p.u.prescribe(bot, 1, 0.0)
-    p.u.prescribe(top, 0, 0.0)
-    p.set_displacement_control(top, 1, 1.0)
+    # The elongation is split symmetrically between the two edges, matching the
+    # micropolar rows, so the whole study describes one boundary value problem.
+    # Here it is a rigid translation and changes nothing -- this path is small strain and never advects its particles --
+    # which is exactly what makes it safe to unify on.
+    p.set_displacement_control(bot, 1, -0.5)
+    p.set_displacement_control(top, 1, 0.5)     # factor = u in mm
+    # The reported reaction is the force on the LOADED edge. Both edges are now
+    # control dofs and their reactions cancel by equilibrium, so the control set
+    # is narrowed back to the top before any step runs.
+    p._control_dofs = np.array(
+        sorted(p.u.dof_map.dof(int(n), 1) for n in top), dtype=np.int64)
 
     xq = np.einsum("eqa,ead->eqd", p.N,
                    p.domain.coordinates[p.conn]).reshape(-1, 2)
@@ -274,7 +282,7 @@ def build(l_b, ell_pf=ELL_PF, dx=DX, ppc=PPC, u_top=None):
         GridDirichlet(lambda c: c[:, 1] < 1e-9,
                       np.array([0.0, -0.5 * u_top, nan, nan, nan, nan])),
         GridDirichlet(lambda c: np.abs(c[:, 1] - SIDE) < 1e-9,
-                      np.array([0.0, 0.5 * u_top, nan, nan, nan, nan])),
+                      np.array([nan, 0.5 * u_top, nan, nan, nan, nan])),
         plane_strain_bc(),
     ]
     pf, stepper = make_problem(grid, parts, E=E_MOD, nu=NU, N=N_COUPLING,

@@ -1,0 +1,8 @@
+# Pinned so a rebuild years from now reproduces the published kernels.
+# targets: the Anaconda interpreter on this machine is x86_64 while the host
+# is arm64, and without the matching target the build fails with the opaque
+# "can't find crate for `std`".
+[toolchain]
+channel = "1.90.0"
+components = ["rustfmt", "clippy"]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]

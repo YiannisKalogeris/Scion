@@ -87,6 +87,14 @@ class MicropolarPhaseFieldMPM:
         self.n_nodes = int(stepper.grid.n_nodes)
         self.d = np.zeros(self.n_nodes)
         self.H = np.zeros(particles.n)
+        # The committed history and damage, frozen at the last *converged*
+        # load step. The staggered iterates are measured against these and not
+        # against the previous sweep; see `solve_damage`. ``None`` until the
+        # first `solve_step`, which is what makes a standalone `solve_damage`
+        # call behave as the first iterate of a step rather than silently
+        # accumulating.
+        self._H_n = None
+        self._d_n = None
         self._supported = self.tables.supported_nodes()
         self._unsupported = np.flatnonzero(~self._supported)
         self.history: list[dict] = []
@@ -169,8 +177,23 @@ class MicropolarPhaseFieldMPM:
         rather than a regularisation -- those rows, columns and right-hand
         sides all vanish, so the nodes solve to zero, which is what a node
         carrying no material should hold.
+
+        **Both monotone bounds are measured against the last converged step,
+        not against the previous stagger, and that is not a refinement.**
+        ``H = max(H, W+)`` taken in place accumulates the driving energy of
+        iterates that were discarded -- early sweeps carry less damage, so at
+        the same prescribed displacement they are stiffer and their ``W+`` near
+        the tip is larger -- and the same holds for clamping ``d`` against the
+        previous sweep. The consequence is not merely a bias: the converged
+        answer then depends on *how* the stagger loop got there, so tightening
+        ``damage_tol`` or changing the starting ``d`` changes the solution of
+        the same boundary value problem. The history variable is defined as a
+        maximum over the solution trajectory, and the staggered iterates are
+        not points on it.
         """
-        self.H = np.maximum(self.H, self.driving_energy())
+        H_n = self.H if self._H_n is None else self._H_n
+        d_n = self.d if self._d_n is None else self._d_n
+        self.H = np.maximum(H_n, self.driving_energy())
         K_grad = self.tables.laplacian(self.model.gradient_coefficient(),
                                        self.n_nodes).tolil()
         if self._unsupported.size:
@@ -195,7 +218,10 @@ class MicropolarPhaseFieldMPM:
             if np.linalg.norm(delta) <= 1e-10 * max(1.0, np.linalg.norm(d)):
                 break
         # irreversibility: damage never decreases, so cracks cannot heal
-        d = np.clip(np.maximum(d, self.d), 0.0, 1.0)
+        d = np.clip(np.maximum(d, d_n), 0.0, 1.0)
+        # the stagger convergence measure, which *is* against the previous
+        # sweep -- it asks whether this iteration moved the field, not whether
+        # damage grew since the last load step
         self._damage_change = float(np.abs(d - self.d).max())
         self.d = d
         return it
@@ -213,8 +239,14 @@ class MicropolarPhaseFieldMPM:
         rather than small numbers.
 
         The state is rolled back before each stagger so every sweep sees the
-        same load rather than an accumulating one.
+        same load rather than an accumulating one. The history field and the
+        damage lower bound are rolled back with it -- they are held at their
+        committed values for the whole step and advanced only by what this
+        step's own iterates produce, which is what keeps the converged answer
+        independent of the staggered path (see `solve_damage`).
         """
+        self._H_n = self.H.copy()
+        self._d_n = self.d.copy()
         base = self.stepper.snapshot(self.particles)
         info = {"stagger": 0, "damage_change": np.inf, "converged": False,
                 "equilibrium": False, "newton": 0}

@@ -1,0 +1,8 @@
+
+  Growth of damage over the compressive path, dd = d(end) - d(first step)
+
+                                max dd   dd>0.01   dd>0.05   dd>0.10
+  micropolar, l_b/l = 4         0.1131    58.48%    28.24%     0.53%
+  classical (no micropolar)     0.0611    91.79%    46.48%     0.00%
+
+  micropolar, l_b/l = 4: driving force at the end is W_iso+ 0.641, W_rel 0.118, W_curv 0.241

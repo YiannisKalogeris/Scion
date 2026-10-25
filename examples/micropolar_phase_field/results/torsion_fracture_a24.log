@@ -1,0 +1,35 @@
+Notched bar in torsion, a/dx = 24, L/a = 3, notch depth 0.3a
+  notch depth 0.5a, notch/l = 3.00, KrylovSolver
+  l = 0.01667 (l/a = 0.17) -- coarse, see the caption
+
+      torsion l_b/a=0  lambda 0.062  load      0.4141  d_max 1.000  cuts  0   128.7 min elapsed, ~1931.0 min left
+      torsion l_b/a=0  lambda 0.125  load      0.8212  d_max 1.000  cuts  0   305.8 min elapsed, ~2140.8 min left
+      torsion l_b/a=0  lambda 0.156  load        1.02  d_max 1.000  cuts  1   585.5 min elapsed, ~3162.0 min left
+      torsion l_b/a=0  lambda 0.203  load       1.309  d_max 1.000  cuts  1   701.8 min elapsed, ~2753.3 min left
+      torsion l_b/a=0  lambda 0.266  load       1.675  d_max 1.000  cuts  1   819.1 min elapsed, ~2264.5 min left
+      torsion l_b/a=0  lambda 0.328  load        2.01  d_max 1.000  cuts  1   975.5 min elapsed, ~1997.5 min left
+      torsion l_b/a=0  lambda 0.391  load       2.311  d_max 1.000  cuts  1  1132.8 min elapsed, ~1767.2 min left
+      torsion l_b/a=0  lambda 0.453  load       2.569  d_max 1.000  cuts  1  1324.9 min elapsed, ~1599.0 min left
+      torsion l_b/a=0  lambda 0.484  load       2.683  d_max 1.000  cuts  2  1573.2 min elapsed, ~1674.7 min left
+      torsion l_b/a=0  lambda 0.531  load       2.827  d_max 1.000  cuts  2  1991.2 min elapsed, ~1756.9 min left
+      torsion l_b/a=0  lambda 0.594  load       2.971  d_max 1.000  cuts  2  2276.9 min elapsed, ~1557.9 min left
+      torsion l_b/a=0  lambda 0.656  load       3.059  d_max 1.000  cuts  2  2581.2 min elapsed, ~1352.0 min left
+      torsion l_b/a=0  lambda 0.688  load       3.081  d_max 1.000  cuts  3  3083.9 min elapsed, ~1401.8 min left
+      torsion l_b/a=0  lambda 0.734  load       3.056  d_max 1.000  cuts  3  4973.1 min elapsed, ~1798.8 min left
+      torsion l_b/a=0  lambda 0.797  load       2.735  d_max 1.000  cuts  3  6085.1 min elapsed, ~1551.1 min left  [past peak, stopping]
+    l_b/a = 0: peak torque 3.0808 N m at step 12, reached t = 0.797, d_notch 0.996 vs d_clamp 0.002, 6085 min so far
+      torsion l_b/a=0.5  lambda 0.062  load       1.744  d_max 1.000  cuts  0   117.7 min elapsed, ~1765.5 min left
+      torsion l_b/a=0.5  lambda 0.125  load       3.404  d_max 1.000  cuts  0   222.0 min elapsed, ~1554.0 min left
+      torsion l_b/a=0.5  lambda 0.188  load        4.89  d_max 1.000  cuts  0   387.5 min elapsed, ~1679.0 min left
+      torsion l_b/a=0.5  lambda 0.250  load       6.087  d_max 1.000  cuts  0   585.2 min elapsed, ~1755.7 min left
+      torsion l_b/a=0.5  lambda 0.312  load       6.791  d_max 1.000  cuts  0   917.6 min elapsed, ~2018.6 min left
+      torsion l_b/a=0.5  lambda 0.375  load        3.19  d_max 1.000  cuts  0  1708.8 min elapsed, ~2848.0 min left  [past peak, stopping]
+    l_b/a = 0.5: peak torque 6.7911 N m at step 4, reached t = 0.375, d_notch 0.988 vs d_clamp 0.009, 7794 min so far
+
+   l_b/a   peak torque  normalised      W_rel     W_curv  reached
+    0.00        3.0808      1.0000      0.222          0    0.797
+    0.50        6.7911      2.2043      0.162      0.626    0.375
+
+  cracked at the notch in every row: True
+
+  7794 min

@@ -86,12 +86,9 @@ BODY_FORCE = np.array([0.0, -10.0])   # (fx, fy) per unit volume
 
 # Number of test shapes to solve
 N_TEST_SHAPES = 1
-SEED = 42
+SEED = 142
 
 # ── Mapping source ──
-# Encoder is the primary path; if its checkpoint is absent we fall back to the stored
-# Stage-1 codes (perfect-z testing). Rename encoder_best.pt (e.g. -> encoder_best_REMOVE.pt)
-# to force the stored-code path, exactly as in Main_nsf.py.
 ENCODER_CKPT = "encoder_best_REMOVE.pt"
 SDF_GRID     = 64              # encoder SDF image resolution (must match training)
 SDF_BOUNDS   = (-2.5, 2.5)     # encoder SDF bounding box   (must match training)

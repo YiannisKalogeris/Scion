@@ -1,0 +1,39 @@
+Compression control: the notched plate of Section 7.1, driven in compression
+  l_b/l = 4, |u| = 0.010205 (the tensile path's own maximum), 16 steps
+
+      compression l_b/l=4  lambda 0.062  load   -0.001067  d_max 1.000  cuts  0     2.1 min elapsed, ~ 31.2 min left
+      compression l_b/l=4  lambda 0.125  load   -0.002128  d_max 1.000  cuts  0     3.5 min elapsed, ~ 24.2 min left
+      compression l_b/l=4  lambda 0.188  load    -0.00318  d_max 1.000  cuts  0     4.8 min elapsed, ~ 21.0 min left
+      compression l_b/l=4  lambda 0.250  load    -0.00422  d_max 1.000  cuts  0     6.2 min elapsed, ~ 18.7 min left
+      compression l_b/l=4  lambda 0.312  load   -0.005245  d_max 1.000  cuts  0     7.6 min elapsed, ~ 16.7 min left
+      compression l_b/l=4  lambda 0.375  load   -0.006253  d_max 1.000  cuts  0     9.0 min elapsed, ~ 15.0 min left
+      compression l_b/l=4  lambda 0.438  load    -0.00724  d_max 1.000  cuts  0    11.1 min elapsed, ~ 14.2 min left
+      compression l_b/l=4  lambda 0.500  load   -0.008205  d_max 1.000  cuts  0    13.1 min elapsed, ~ 13.1 min left
+      compression l_b/l=4  lambda 0.562  load   -0.009145  d_max 1.000  cuts  0    15.2 min elapsed, ~ 11.8 min left
+      compression l_b/l=4  lambda 0.625  load    -0.01006  d_max 1.000  cuts  0    17.3 min elapsed, ~ 10.4 min left
+      compression l_b/l=4  lambda 0.688  load    -0.01085  d_max 1.000  cuts  0    19.3 min elapsed, ~  8.8 min left
+      compression l_b/l=4  lambda 0.750  load    -0.01173  d_max 1.000  cuts  0    21.4 min elapsed, ~  7.1 min left
+      compression l_b/l=4  lambda 0.812  load    -0.01263  d_max 1.000  cuts  0    23.5 min elapsed, ~  5.4 min left
+      compression l_b/l=4  lambda 0.875  load     -0.0135  d_max 1.000  cuts  0    26.2 min elapsed, ~  3.7 min left
+      compression l_b/l=4  lambda 0.938  load    -0.01433  d_max 1.000  cuts  0    29.1 min elapsed, ~  1.9 min left
+      compression l_b/l=4  lambda 1.000  load    -0.01513  d_max 1.000  cuts  0    31.9 min elapsed, ~  0.0 min left
+
+       t  d_max off-notch  d_max all  H_max/(Gc/2l)    W_iso+     W_rel    W_curv
+   0.062        8.981e-01     0.9877      6.882e-03    0.6090 1.405e-01 2.505e-01
+   0.125        8.981e-01     0.9877      2.752e-02    0.6136 1.405e-01 2.459e-01
+   0.188        8.981e-01     0.9877      6.198e-02    0.6178 1.406e-01 2.415e-01
+   0.250        8.981e-01     0.9877      1.104e-01    0.6217 1.410e-01 2.374e-01
+   0.312        8.981e-01     0.9877      1.731e-01    0.6251 1.414e-01 2.334e-01
+   0.375        8.981e-01     0.9877      2.502e-01    0.6283 1.420e-01 2.297e-01
+   0.438        8.982e-01     0.9877      3.425e-01    0.6312 1.428e-01 2.261e-01
+   0.500        8.983e-01     0.9877      4.503e-01    0.6338 1.436e-01 2.226e-01
+   0.562        8.984e-01     0.9877      5.745e-01    0.6361 1.445e-01 2.193e-01
+   0.625        8.986e-01     0.9878      7.158e-01    0.6382 1.456e-01 2.162e-01
+   0.688        8.989e-01     0.9878      8.625e-01    0.6345 1.451e-01 2.204e-01
+   0.750        8.991e-01     0.9878      1.031e+00    0.6338 1.453e-01 2.209e-01
+   0.812        8.995e-01     0.9879      1.216e+00    0.6379 1.454e-01 2.166e-01
+   0.875        8.998e-01     0.9879      1.418e+00    0.6422 1.454e-01 2.124e-01
+   0.938        9.002e-01     0.9879      1.638e+00    0.6466 1.452e-01 2.081e-01
+   1.000        9.007e-01     0.9880      1.877e+00    0.6510 1.451e-01 2.039e-01
+
+  reached t = 1.000, peak off-notch damage 9.007e-01, peak H/(Gc/2l) 1.877e+00, 32 min

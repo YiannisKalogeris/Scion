@@ -263,3 +263,105 @@ class TestRefresh:
         p.particles.x[:, 0] += 0.35
         with pytest.raises(NotImplementedError, match="gained particle support"):
             p.refresh()
+
+
+def notched_micropolar(L=0.4, dx=0.1, ppc=2, ell=0.2, l_b=0.1, u_top=1.0e-3):
+    """A small notched slab that genuinely staggers, for the history tests.
+
+    One cell thick with the plane-strain components constrained, and the
+    elongation split between the two edges rather than clamping one and driving
+    the other -- on a fixed background grid those are not the same discrete
+    problem, because a drifting body's weight operator stops commuting with the
+    mirror.
+    """
+    sub, pad, zpad, nz = dx / ppc, 2, 2, 1
+    n = int(round(L / dx))
+    grid = CartesianGrid(shape=(n + 2 * pad, n + 2 * pad, nz + 2 * zpad),
+                         dx=dx,
+                         origin=np.array([-pad * dx, -pad * dx, -zpad * dx]),
+                         basis=get_basis("linear"))
+    ax = [np.arange(sub / 2, e, sub) for e in (L, L, nz * dx)]
+    pts = np.stack([m.ravel() for m in np.meshgrid(*ax, indexing="ij")],
+                   axis=1)
+    parts = attach_micropolar_state(
+        ParticleSet(pts, vol0=sub ** 3, density=1.0))
+    el = MicropolarHooke.from_technical(E=E_MOD, nu=NU, N=0.35,
+                                        l_t=2.0 * l_b, l_b=l_b, psi=1.5)
+    nan = np.nan
+    bcs = [
+        GridDirichlet(lambda c: c[:, 1] < 1e-9,
+                      np.array([0.0, -0.5 * u_top, nan, nan, nan, nan])),
+        GridDirichlet(lambda c: np.abs(c[:, 1] - L) < 1e-9,
+                      np.array([0.0, 0.5 * u_top, nan, nan, nan, nan])),
+        GridDirichlet(lambda c: np.ones(len(c), bool),
+                      np.array([nan, nan, 0.0, 0.0, 0.0, nan])),
+    ]
+    st = MicropolarMPMStepper(grid, el, dirichlet=bcs, max_iter=25)
+    st.prepare(parts)
+    model = PhaseFieldModel(E_MOD, NU, GC, ell, split="spectral",
+                            coupling="hybrid", dissipation="AT2")
+    pf = MicropolarPhaseFieldMPM(st, parts, model, max_stagger=30)
+    x = parts.x[:, :2]
+    behind = x[:, 0] <= L / 2
+    dist = np.where(behind, np.abs(x[:, 1] - L / 2),
+                    np.hypot(x[:, 0] - L / 2, x[:, 1] - L / 2))
+    width = max(0.25 * ell, dx)
+    inside = dist <= width
+    H0 = np.zeros(parts.n)
+    H0[inside] = 1.0e3 * GC / (2.0 * ell) * (1.0 - dist[inside] / width)
+    pf.H = H0
+    return pf, st, parts
+
+
+class TestStaggeredMonotoneBounds:
+    """Both monotone bounds belong to the load step, not to the sweep.
+
+    The history variable is defined as a maximum over the *solution*
+    trajectory. Taking ``H = max(H, W+)`` in place inside the staggered loop
+    maximises over the iterates as well, which are not points on that
+    trajectory, and clamping ``d`` against the previous sweep does the same to
+    the damage. The cost is not just a bias towards damage: the converged
+    answer then depends on how the stagger loop reached it, so changing
+    ``damage_tol`` or the starting ``d`` changes the solution of the same
+    boundary value problem.
+
+    Both tests fail against the pre-fix code by factors of 40 to 1600 on most
+    loaded particles -- an early sweep carries less damage, so at the same
+    prescribed displacement it is stiffer and its ``W+`` at the notch is far
+    larger than the converged one, and that value was being locked in.
+    """
+
+    def test_history_is_a_maximum_over_converged_states_only(self):
+        pf, st, parts = notched_micropolar()
+        H_n = pf.H.copy()
+        with quiet():
+            info = pf.solve_step(1.0, 1.0)
+        # the loop has to have iterated, or the invariant is vacuous
+        assert info["stagger"] > 1, "no staggering, so nothing is being tested"
+        assert info["converged"] and info["equilibrium"]
+        assert_allclose(pf.H, np.maximum(H_n, pf.driving_energy()),
+                        rtol=1e-12, atol=0.0)
+
+    def test_the_damage_bound_is_the_last_converged_step(self):
+        """The converged damage must be reproducible from the committed bound.
+
+        One phase-field solve at the converged kinematics, started from
+        ``d^n``, has to land back on the converged field. AT2 is linear at
+        fixed history, so that solve is exact and independent of its starting
+        guess -- which makes this a statement about the *bound* and not about
+        the iteration. Clamping against the previous sweep instead leaves the
+        converged ``d`` carrying whatever an intermediate sweep overshot, and
+        it cannot be recovered this way.
+        """
+        pf, st, parts = notched_micropolar()
+        d_n = pf.d.copy()
+        with quiet():
+            info = pf.solve_step(1.0, 1.0)
+        assert info["stagger"] > 1
+        d_conv, H_conv = pf.d.copy(), pf.H.copy()
+        assert (d_conv >= d_n - 1e-14).all(), "irreversibility violated"
+        pf.d = d_n.copy()
+        with quiet():
+            pf.solve_damage()
+        assert_allclose(pf.H, H_conv, rtol=1e-12, atol=0.0)
+        assert_allclose(pf.d, d_conv, rtol=0.0, atol=1e-12)

@@ -2,66 +2,66 @@ Micropolar phase-field fracture: notched beam in bending
   span 1.0 x depth 0.4, notch at x = 0.35 of depth 0.12
   E = 1e+07, nu = 0.25, N = 0.5, G_c = 5.0
   l = 0.04 (4.0 cells), dx = 0.01, 2 particles per cell per direction, 12 load steps
-      l_b/h=0  lambda 0.083  load      0.4153  d_max 1.000  cuts  0     1.4 min elapsed, ~ 15.1 min left
-      l_b/h=0  lambda 0.167  load      0.8274  d_max 1.000  cuts  0     2.7 min elapsed, ~ 13.7 min left
-      l_b/h=0  lambda 0.250  load       1.232  d_max 1.000  cuts  0     4.1 min elapsed, ~ 12.3 min left
-      l_b/h=0  lambda 0.333  load       1.625  d_max 1.000  cuts  0     5.9 min elapsed, ~ 11.8 min left
-      l_b/h=0  lambda 0.417  load       2.001  d_max 1.000  cuts  0     8.2 min elapsed, ~ 11.4 min left
-      l_b/h=0  lambda 0.500  load       2.355  d_max 1.000  cuts  0    10.9 min elapsed, ~ 10.9 min left
-      l_b/h=0  lambda 0.583  load       2.675  d_max 1.000  cuts  0    14.0 min elapsed, ~ 10.0 min left
-      l_b/h=0  lambda 0.667  load       2.911  d_max 1.000  cuts  0    25.3 min elapsed, ~ 12.6 min left
-      l_b/h=0  lambda 0.750  load       2.948  d_max 1.000  cuts  0    36.5 min elapsed, ~ 12.2 min left
-      l_b/h=0  lambda 0.833  load       2.289  d_max 1.000  cuts  0    47.8 min elapsed, ~  9.6 min left
-      l_b/h=0  lambda 0.917  load       1.673  d_max 1.000  cuts  0    59.0 min elapsed, ~  5.4 min left
-      l_b/h=0  lambda 1.000  load        1.33  d_max 1.000  cuts  0    70.4 min elapsed, ~  0.0 min left
-      l_b/h=0.25  lambda 0.083  load       1.116  d_max 1.000  cuts  0     1.3 min elapsed, ~ 14.3 min left
-      l_b/h=0.25  lambda 0.167  load       2.209  d_max 1.000  cuts  0     2.6 min elapsed, ~ 13.0 min left
-      l_b/h=0.25  lambda 0.250  load       3.251  d_max 1.000  cuts  0     4.3 min elapsed, ~ 13.0 min left
-      l_b/h=0.25  lambda 0.333  load       4.219  d_max 1.000  cuts  0     6.1 min elapsed, ~ 12.2 min left
-      l_b/h=0.25  lambda 0.417  load       5.085  d_max 1.000  cuts  0     8.7 min elapsed, ~ 12.2 min left
-      l_b/h=0.25  lambda 0.500  load       5.814  d_max 1.000  cuts  0    12.2 min elapsed, ~ 12.2 min left
-      l_b/h=0.25  lambda 0.583  load       6.342  d_max 1.000  cuts  0    17.4 min elapsed, ~ 12.4 min left
-      l_b/h=0.25  lambda 0.667  load        6.13  d_max 1.000  cuts  0    28.2 min elapsed, ~ 14.1 min left
-      l_b/h=0.25  lambda 0.750  load       2.902  d_max 1.000  cuts  0    39.0 min elapsed, ~ 13.0 min left
-      l_b/h=0.25  lambda 0.833  load     0.04821  d_max 1.000  cuts  0    44.6 min elapsed, ~  8.9 min left
-      l_b/h=0.25  lambda 0.917  load     0.04495  d_max 1.000  cuts  0    45.9 min elapsed, ~  4.2 min left
-      l_b/h=0.25  lambda 1.000  load     0.04294  d_max 1.000  cuts  0    47.6 min elapsed, ~  0.0 min left
-      l_b/h=0.375  lambda 0.083  load       1.789  d_max 1.000  cuts  0     1.3 min elapsed, ~ 14.3 min left
-      l_b/h=0.375  lambda 0.167  load       3.522  d_max 1.000  cuts  0     2.6 min elapsed, ~ 13.0 min left
-      l_b/h=0.375  lambda 0.250  load       5.132  d_max 1.000  cuts  0     4.3 min elapsed, ~ 13.0 min left
-      l_b/h=0.375  lambda 0.333  load       6.561  d_max 1.000  cuts  0     6.5 min elapsed, ~ 13.0 min left
-      l_b/h=0.375  lambda 0.417  load       7.741  d_max 1.000  cuts  0     9.5 min elapsed, ~ 13.4 min left
-      l_b/h=0.375  lambda 0.500  load       8.552  d_max 1.000  cuts  0    14.8 min elapsed, ~ 14.8 min left
-      l_b/h=0.375  lambda 0.583  load       7.807  d_max 1.000  cuts  0    25.6 min elapsed, ~ 18.3 min left
-      l_b/h=0.375  lambda 0.667  load     0.05947  d_max 1.000  cuts  0    37.3 min elapsed, ~ 18.7 min left
-      l_b/h=0.375  lambda 0.750  load     0.05539  d_max 1.000  cuts  0    39.5 min elapsed, ~ 13.2 min left
-      l_b/h=0.375  lambda 0.833  load     0.05273  d_max 1.000  cuts  0    41.2 min elapsed, ~  8.2 min left
-      l_b/h=0.375  lambda 0.917  load     0.04963  d_max 1.000  cuts  0    43.8 min elapsed, ~  4.0 min left
-      l_b/h=0.375  lambda 1.000  load      0.0462  d_max 1.000  cuts  0    70.3 min elapsed, ~  0.0 min left
-      l_b/h=0.5  lambda 0.083  load       2.518  d_max 1.000  cuts  0     5.7 min elapsed, ~ 63.0 min left
-      l_b/h=0.5  lambda 0.167  load       4.929  d_max 1.000  cuts  0     7.0 min elapsed, ~ 35.1 min left
-      l_b/h=0.5  lambda 0.250  load       7.115  d_max 1.000  cuts  0     8.7 min elapsed, ~ 26.2 min left
-      l_b/h=0.5  lambda 0.333  load       8.965  d_max 1.000  cuts  0    11.3 min elapsed, ~ 22.7 min left
-      l_b/h=0.5  lambda 0.417  load       10.33  d_max 1.000  cuts  0    15.8 min elapsed, ~ 22.1 min left
-      l_b/h=0.5  lambda 0.500  load        10.5  d_max 1.000  cuts  0    26.9 min elapsed, ~ 26.9 min left
-      l_b/h=0.5  lambda 0.583  load     0.06178  d_max 1.000  cuts  0    34.8 min elapsed, ~ 24.9 min left
-      l_b/h=0.5  lambda 0.667  load     0.06159  d_max 1.000  cuts  0    36.6 min elapsed, ~ 18.3 min left
-      l_b/h=0.5  lambda 0.750  load     0.05956  d_max 1.000  cuts  0    39.3 min elapsed, ~ 13.1 min left
-      l_b/h=0.5  lambda 0.833  load     0.05111  d_max 1.000  cuts  0    42.9 min elapsed, ~  8.6 min left
-      l_b/h=0.5  lambda 0.917  load     0.04127  d_max 1.000  cuts  0    46.9 min elapsed, ~  4.3 min left
-      l_b/h=0.5  lambda 1.000  load     0.03409  d_max 1.000  cuts  0    50.5 min elapsed, ~  0.0 min left
+      l_b/h=0  lambda 0.083  load      0.4155  d_max 1.000  cuts  0     1.4 min elapsed, ~ 15.3 min left
+      l_b/h=0  lambda 0.167  load      0.8275  d_max 1.000  cuts  0     2.7 min elapsed, ~ 13.6 min left
+      l_b/h=0  lambda 0.250  load       1.232  d_max 1.000  cuts  0     4.0 min elapsed, ~ 12.1 min left
+      l_b/h=0  lambda 0.333  load       1.625  d_max 1.000  cuts  0     5.8 min elapsed, ~ 11.6 min left
+      l_b/h=0  lambda 0.417  load       2.002  d_max 1.000  cuts  0     8.0 min elapsed, ~ 11.2 min left
+      l_b/h=0  lambda 0.500  load       2.355  d_max 1.000  cuts  0    10.7 min elapsed, ~ 10.7 min left
+      l_b/h=0  lambda 0.583  load       2.676  d_max 1.000  cuts  0    13.8 min elapsed, ~  9.8 min left
+      l_b/h=0  lambda 0.667  load       2.915  d_max 1.000  cuts  0    24.8 min elapsed, ~ 12.4 min left
+      l_b/h=0  lambda 0.750  load       2.968  d_max 1.000  cuts  0    35.6 min elapsed, ~ 11.9 min left
+      l_b/h=0  lambda 0.833  load        2.32  d_max 1.000  cuts  0    46.3 min elapsed, ~  9.3 min left
+      l_b/h=0  lambda 0.917  load       1.695  d_max 1.000  cuts  0    57.0 min elapsed, ~  5.2 min left
+      l_b/h=0  lambda 1.000  load        1.33  d_max 1.000  cuts  0    67.8 min elapsed, ~  0.0 min left
+      l_b/h=0.25  lambda 0.083  load       1.117  d_max 1.000  cuts  0     1.2 min elapsed, ~ 13.4 min left
+      l_b/h=0.25  lambda 0.167  load       2.209  d_max 1.000  cuts  0     2.4 min elapsed, ~ 12.2 min left
+      l_b/h=0.25  lambda 0.250  load       3.252  d_max 1.000  cuts  0     4.1 min elapsed, ~ 12.2 min left
+      l_b/h=0.25  lambda 0.333  load        4.22  d_max 1.000  cuts  0     6.1 min elapsed, ~ 12.2 min left
+      l_b/h=0.25  lambda 0.417  load       5.088  d_max 1.000  cuts  0     8.5 min elapsed, ~ 11.9 min left
+      l_b/h=0.25  lambda 0.500  load       5.823  d_max 1.000  cuts  0    11.8 min elapsed, ~ 11.8 min left
+      l_b/h=0.25  lambda 0.583  load       6.362  d_max 1.000  cuts  0    17.1 min elapsed, ~ 12.2 min left
+      l_b/h=0.25  lambda 0.667  load        6.08  d_max 1.000  cuts  0    27.3 min elapsed, ~ 13.6 min left
+      l_b/h=0.25  lambda 0.750  load       2.435  d_max 1.000  cuts  0    37.5 min elapsed, ~ 12.5 min left
+      l_b/h=0.25  lambda 0.833  load      0.1278  d_max 1.000  cuts  0    48.0 min elapsed, ~  9.6 min left
+      l_b/h=0.25  lambda 0.917  load      0.1109  d_max 1.000  cuts  0    54.7 min elapsed, ~  5.0 min left
+      l_b/h=0.25  lambda 1.000  load     0.09762  d_max 1.000  cuts  0    58.1 min elapsed, ~  0.0 min left
+      l_b/h=0.375  lambda 0.083  load       1.791  d_max 1.000  cuts  0     1.2 min elapsed, ~ 13.7 min left
+      l_b/h=0.375  lambda 0.167  load       3.523  d_max 1.000  cuts  0     2.5 min elapsed, ~ 12.6 min left
+      l_b/h=0.375  lambda 0.250  load       5.134  d_max 1.000  cuts  0     4.2 min elapsed, ~ 12.6 min left
+      l_b/h=0.375  lambda 0.333  load       6.566  d_max 1.000  cuts  0     6.3 min elapsed, ~ 12.6 min left
+      l_b/h=0.375  lambda 0.417  load       7.753  d_max 1.000  cuts  0     9.6 min elapsed, ~ 13.4 min left
+      l_b/h=0.375  lambda 0.500  load       8.584  d_max 1.000  cuts  0    14.9 min elapsed, ~ 14.9 min left
+      l_b/h=0.375  lambda 0.583  load       7.332  d_max 1.000  cuts  0    25.1 min elapsed, ~ 17.9 min left
+      l_b/h=0.375  lambda 0.667  load      0.1816  d_max 1.000  cuts  0    33.6 min elapsed, ~ 16.8 min left
+      l_b/h=0.375  lambda 0.750  load      0.1421  d_max 1.000  cuts  0    35.7 min elapsed, ~ 11.9 min left
+      l_b/h=0.375  lambda 0.833  load      0.1148  d_max 1.000  cuts  0    37.3 min elapsed, ~  7.5 min left
+      l_b/h=0.375  lambda 0.917  load     0.09502  d_max 1.000  cuts  0    39.0 min elapsed, ~  3.5 min left
+      l_b/h=0.375  lambda 1.000  load     0.08019  d_max 1.000  cuts  0    40.6 min elapsed, ~  0.0 min left
+      l_b/h=0.5  lambda 0.083  load       2.521  d_max 1.000  cuts  0     1.6 min elapsed, ~ 17.9 min left
+      l_b/h=0.5  lambda 0.167  load        4.93  d_max 1.000  cuts  0     2.9 min elapsed, ~ 14.3 min left
+      l_b/h=0.5  lambda 0.250  load       7.118  d_max 1.000  cuts  0     4.9 min elapsed, ~ 14.7 min left
+      l_b/h=0.5  lambda 0.333  load       8.975  d_max 1.000  cuts  0     7.4 min elapsed, ~ 14.7 min left
+      l_b/h=0.5  lambda 0.417  load       10.36  d_max 1.000  cuts  0    11.9 min elapsed, ~ 16.6 min left
+      l_b/h=0.5  lambda 0.500  load       10.26  d_max 1.000  cuts  0    22.0 min elapsed, ~ 22.0 min left
+      l_b/h=0.5  lambda 0.583  load       0.191  d_max 1.000  cuts  0    32.3 min elapsed, ~ 23.0 min left
+      l_b/h=0.5  lambda 0.667  load      0.1396  d_max 1.000  cuts  0    34.3 min elapsed, ~ 17.2 min left
+      l_b/h=0.5  lambda 0.750  load      0.1078  d_max 1.000  cuts  0    35.9 min elapsed, ~ 12.0 min left
+      l_b/h=0.5  lambda 0.833  load     0.08629  d_max 1.000  cuts  0    37.2 min elapsed, ~  7.4 min left
+      l_b/h=0.5  lambda 0.917  load     0.07038  d_max 1.000  cuts  0    38.4 min elapsed, ~  3.5 min left
+      l_b/h=0.5  lambda 1.000  load     0.05843  d_max 1.000  cuts  0    39.6 min elapsed, ~  0.0 min left
 
     l_b/h      l_b  l_b/dx   peak load  normalised    W_iso    W_rel    W_curv  d_notch  d_clamp  reached
   ----------------------------------------------------------------------------------------------------------
-    0.000    0.000      --       2.948      1.0000    0.999 0.000996         0    0.999    0.078    1.000
-    0.250    0.100    10.0       6.342      2.1514    0.766  0.00973     0.224    0.999    0.133    1.000
-    0.375    0.150    15.0       8.552      2.9014    0.615   0.0237     0.361    0.999    0.161    1.000
-    0.500    0.200    20.0        10.5      3.5633    0.512    0.042     0.446    0.999    0.179    1.000
+    0.000    0.000      --       2.968      1.0000    0.999 0.000999         0    0.999    0.063    1.000
+    0.250    0.100    10.0       6.362      2.1432    0.766  0.00974     0.225    0.999    0.105    1.000
+    0.375    0.150    15.0       8.584      2.8920    0.615   0.0237     0.361    0.999    0.121    1.000
+    0.500    0.200    20.0       10.36      3.4898    0.503   0.0474      0.45    0.999    0.130    1.000
 
     Geometry, mesh, l and G_c are identical across every row, so a classical model
     -- having no length of its own -- returns one curve for all of them. Here the peak
-    load changes by 3.56x, and the curvature share of the damage driving force
-    rises from 0.0e+00 to 0.446: the couple stress carries load the
+    load changes by 3.49x, and the curvature share of the damage driving force
+    rises from 0.0e+00 to 0.450: the couple stress carries load the
     classical beam has to shed into damage.
     Monotone in l_b: True. Two points could be a coincidence of parameters;
     a monotone sweep is the statement that l_b is what is doing the work.

@@ -1,4 +1,4 @@
-r"""
+"""
 Voronoi particle volumes and their shape derivative.
 
 ``Pi_h = sum_p V_p^0 W(F_p)`` approximates the body's energy only while the

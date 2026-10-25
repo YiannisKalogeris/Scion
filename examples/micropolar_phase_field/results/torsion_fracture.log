@@ -1,0 +1,18 @@
+Notched bar in torsion, a/dx = 8, L/a = 3, notch depth 0.3a
+  notch depth 0.3a, notch/l = 0.60, direct solver
+  l = 0.05 (l/a = 0.50) -- coarse, see the caption
+
+      torsion l_b/a=0  lambda 0.062  load      0.2404  d_max 1.000  cuts  0    52.7 min elapsed, ~789.9 min left
+      torsion l_b/a=0  lambda 0.125  load      0.4768  d_max 1.000  cuts  0    94.3 min elapsed, ~660.3 min left
+      torsion l_b/a=0  lambda 0.188  load      0.7053  d_max 1.000  cuts  0   330.9 min elapsed, ~1433.7 min left
+      torsion l_b/a=0  lambda 0.250  load       0.922  d_max 1.000  cuts  0   410.5 min elapsed, ~1231.5 min left
+      torsion l_b/a=0  lambda 0.312  load       1.124  d_max 1.000  cuts  0   510.9 min elapsed, ~1124.0 min left
+      torsion l_b/a=0  lambda 0.375  load       1.307  d_max 1.000  cuts  0   573.1 min elapsed, ~955.1 min left
+      torsion l_b/a=0  lambda 0.438  load        1.47  d_max 1.000  cuts  0   634.8 min elapsed, ~816.1 min left
+      torsion l_b/a=0  lambda 0.500  load       1.609  d_max 1.000  cuts  0   720.0 min elapsed, ~720.0 min left
+      torsion l_b/a=0  lambda 0.562  load       1.723  d_max 1.000  cuts  0   815.6 min elapsed, ~634.3 min left
+      torsion l_b/a=0  lambda 0.625  load       1.812  d_max 1.000  cuts  0   949.1 min elapsed, ~569.5 min left
+      torsion l_b/a=0  lambda 0.688  load       1.875  d_max 1.000  cuts  0  1033.2 min elapsed, ~469.6 min left
+      torsion l_b/a=0  lambda 0.750  load        1.91  d_max 1.000  cuts  0  1132.7 min elapsed, ~377.6 min left
+      torsion l_b/a=0  lambda 0.812  load       1.921  d_max 1.000  cuts  0  1251.5 min elapsed, ~288.8 min left
+      torsion l_b/a=0  lambda 0.875  load       1.909  d_max 1.000  cuts  0  1354.5 min elapsed, ~193.5 min left

@@ -13,7 +13,3 @@ numpy = "0.22"               # PyO3 NumPy interop
 ndarray = "0.16"             # N-dimensional arrays
 sprs = "0.11"                # Sparse matrices
 rayon = "1.10"               # Parallel iterators
-
-[build-system]
-requires = ["maturin>=1.0,<2.0"]
-build-backend = "maturin"

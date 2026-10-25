@@ -1,0 +1,33 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/finite_rotation.py", line 180, in <module>
+    main()
+  File "/Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/finite_rotation.py", line 176, in main
+    run(dx, 4.0 * dx)      # l/dx = 4 at every resolution
+    ^^^^^^^^^^^^^^^^^
+  File "/Users/ioannis/Desktop/ResearchCodes/Scion/examples/micropolar_phase_field/finite_rotation.py", line 141, in run
+    pf.solve_step(1.0, 1.0)
+  File "/Users/ioannis/Desktop/ResearchCodes/Scion/src/scion/multiphysics/micropolar_phase_field.py", line 224, in solve_step
+    res = self.stepper.step(self.particles, load_factor, d_load)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/ioannis/Desktop/ResearchCodes/Scion/src/scion/discretization/mpm/micropolar.py", line 826, in step
+    self.apply_increment(particles, pres)
+  File "/Users/ioannis/Desktop/ResearchCodes/Scion/src/scion/discretization/mpm/micropolar.py", line 373, in apply_increment
+    raise InvertedParticle(
+scion.discretization.mpm.implicit.InvertedParticle: 200 of 51200 particles inverted in the trial state (min det dF = -4.585e-01)
+Rigid rotation of a damaged specimen: every column must stay at round-off
+
+  dx = 0.025, l = 0.1, 12800 particles, 40328 nodes; 320 edge particles
+    loaded: max damage 0.9878, |Gamma|max 1.263e-02, driving energy 0.00039956
+      rotated       |dE|   |dGamma|    |dH|/H      |dd|       dW/W  |Q - R Q0|  cuts
+        15.0d   1.01e-01   1.88e-02  2.83e-03  1.94e-02   2.14e-01    1.89e-04    10
+        30.0d   1.06e-01   1.75e-02  6.85e-03  2.91e-02   2.29e-01    1.80e-04     9
+        45.0d   1.02e-01   1.95e-02  8.87e-03  3.36e-02   1.76e-01    1.52e-04     9
+        60.0d   1.27e-01   1.69e-01  1.72e-01  6.97e-01   1.00e-01    1.38e-03     9
+        75.0d   1.24e-01   1.64e-01  1.72e-01  6.98e-01   3.05e-02    1.48e-03     9
+        90.0d   8.96e-02   1.00e-01  1.72e-01  6.98e-01   2.36e-02    1.67e-03    11
+
+  dx = 0.0125, l = 0.05, 51200 particles, 129032 nodes; 640 edge particles
+    loaded: max damage 0.9880, |Gamma|max 8.536e-02, driving energy 0.000798433
+      rotated       |dE|   |dGamma|    |dH|/H      |dd|       dW/W  |Q - R Q0|  cuts

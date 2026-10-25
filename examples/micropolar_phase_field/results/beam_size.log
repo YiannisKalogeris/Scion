@@ -1,38 +1,102 @@
 Notched beam size series: fixed material, similar geometry
-  l_b = 0.1, l = 0.04, dx = 0.01; sizes h = (0.2, 0.3, 0.4)
+  l_b = 0.1, l = 0.04, dx = 0.01; sizes h = (0.2, 0.3, 0.4, 0.6)
 
-  h = 0.2: already on disk, loading
-      h=0.3 l_b=0 x1  lambda 0.083  load      0.2851  d_max 1.000  cuts  0     0.7 min elapsed, ~  7.5 min left
-      h=0.3 l_b=0 x1  lambda 0.167  load      0.5683  d_max 1.000  cuts  0     1.4 min elapsed, ~  6.8 min left
-      h=0.3 l_b=0 x1  lambda 0.250  load      0.8472  d_max 1.000  cuts  0     2.1 min elapsed, ~  6.2 min left
-      h=0.3 l_b=0 x1  lambda 0.333  load       1.119  d_max 1.000  cuts  0     2.7 min elapsed, ~  5.5 min left
-      h=0.3 l_b=0 x1  lambda 0.417  load       1.382  d_max 1.000  cuts  0     3.7 min elapsed, ~  5.1 min left
-      h=0.3 l_b=0 x1  lambda 0.500  load       1.632  d_max 1.000  cuts  0     4.8 min elapsed, ~  4.8 min left
-      h=0.3 l_b=0 x1  lambda 0.583  load       1.865  d_max 1.000  cuts  0     5.9 min elapsed, ~  4.2 min left
-      h=0.3 l_b=0 x1  lambda 0.667  load       2.069  d_max 1.000  cuts  0     7.5 min elapsed, ~  3.8 min left
-      h=0.3 l_b=0 x1  lambda 0.750  load       2.231  d_max 1.000  cuts  0     9.6 min elapsed, ~  3.2 min left
-      h=0.3 l_b=0 x1  lambda 0.833  load       2.332  d_max 1.000  cuts  0    12.5 min elapsed, ~  2.5 min left
-      h=0.3 l_b=0 x1  lambda 0.917  load       2.254  d_max 1.000  cuts  0    18.2 min elapsed, ~  1.7 min left
-      h=0.3 l_b=0 x1  lambda 1.000  load       1.726  d_max 1.000  cuts  0    24.0 min elapsed, ~  0.0 min left
-      h=0.3 l_b=0.1 x1  lambda 0.083  load       1.104  d_max 1.000  cuts  0     0.7 min elapsed, ~  7.3 min left
-      h=0.3 l_b=0.1 x1  lambda 0.167  load       2.178  d_max 1.000  cuts  0     1.3 min elapsed, ~  6.7 min left
-      h=0.3 l_b=0.1 x1  lambda 0.250  load       3.187  d_max 1.000  cuts  0     2.2 min elapsed, ~  6.6 min left
-      h=0.3 l_b=0.1 x1  lambda 0.333  load       4.103  d_max 1.000  cuts  0     3.1 min elapsed, ~  6.2 min left
-      h=0.3 l_b=0.1 x1  lambda 0.417  load       4.893  d_max 1.000  cuts  0     4.2 min elapsed, ~  5.9 min left
-      h=0.3 l_b=0.1 x1  lambda 0.500  load       5.522  d_max 1.000  cuts  0     5.8 min elapsed, ~  5.8 min left
-      h=0.3 l_b=0.1 x1  lambda 0.583  load       5.928  d_max 1.000  cuts  0     8.0 min elapsed, ~  5.7 min left
-      h=0.3 l_b=0.1 x1  lambda 0.667  load       5.857  d_max 1.000  cuts  0    13.5 min elapsed, ~  6.7 min left
-      h=0.3 l_b=0.1 x1  lambda 0.750  load       1.128  d_max 1.000  cuts  0    19.0 min elapsed, ~  6.3 min left
-      h=0.3 l_b=0.1 x1  lambda 0.833  load     0.07475  d_max 1.000  cuts  0    21.1 min elapsed, ~  4.2 min left
-      h=0.3 l_b=0.1 x1  lambda 0.917  load     0.06911  d_max 1.000  cuts  0    21.8 min elapsed, ~  2.0 min left
-      h=0.3 l_b=0.1 x1  lambda 1.000  load     0.06543  d_max 1.000  cuts  0    22.7 min elapsed, ~  0.0 min left
-  h = 0.4: already on disk, loading
+      h=0.2 l_b=0 x1  lambda 0.083  load      0.1515  d_max 1.000  cuts  0     0.3 min elapsed, ~  3.2 min left
+      h=0.2 l_b=0 x1  lambda 0.167  load      0.3021  d_max 1.000  cuts  0     0.5 min elapsed, ~  2.4 min left
+      h=0.2 l_b=0 x1  lambda 0.250  load      0.4507  d_max 1.000  cuts  0     0.8 min elapsed, ~  2.3 min left
+      h=0.2 l_b=0 x1  lambda 0.333  load      0.5962  d_max 1.000  cuts  0     1.1 min elapsed, ~  2.1 min left
+      h=0.2 l_b=0 x1  lambda 0.417  load      0.7375  d_max 1.000  cuts  0     1.4 min elapsed, ~  1.9 min left
+      h=0.2 l_b=0 x1  lambda 0.500  load      0.8734  d_max 1.000  cuts  0     1.7 min elapsed, ~  1.7 min left
+      h=0.2 l_b=0 x1  lambda 0.583  load       1.003  d_max 1.000  cuts  0    19.5 min elapsed, ~ 13.9 min left
+      h=0.2 l_b=0 x1  lambda 0.667  load       1.124  d_max 1.000  cuts  0    20.2 min elapsed, ~ 10.1 min left
+      h=0.2 l_b=0 x1  lambda 0.750  load       1.235  d_max 1.000  cuts  0    20.8 min elapsed, ~  6.9 min left
+      h=0.2 l_b=0 x1  lambda 0.833  load       1.334  d_max 1.000  cuts  0    21.6 min elapsed, ~  4.3 min left
+      h=0.2 l_b=0 x1  lambda 0.917  load       1.418  d_max 1.000  cuts  0    22.6 min elapsed, ~  2.1 min left
+      h=0.2 l_b=0 x1  lambda 1.000  load       1.482  d_max 1.000  cuts  0    23.9 min elapsed, ~  0.0 min left
+      h=0.2 l_b=0.1 x1  lambda 0.083  load       1.061  d_max 1.000  cuts  0     0.4 min elapsed, ~  4.3 min left
+      h=0.2 l_b=0.1 x1  lambda 0.167  load       2.078  d_max 1.000  cuts  0     0.8 min elapsed, ~  3.8 min left
+      h=0.2 l_b=0.1 x1  lambda 0.250  load       3.009  d_max 1.000  cuts  0     1.2 min elapsed, ~  3.5 min left
+      h=0.2 l_b=0.1 x1  lambda 0.333  load       3.813  d_max 1.000  cuts  0     1.6 min elapsed, ~  3.2 min left
+      h=0.2 l_b=0.1 x1  lambda 0.417  load       4.452  d_max 1.000  cuts  0     2.2 min elapsed, ~  3.1 min left
+      h=0.2 l_b=0.1 x1  lambda 0.500  load       4.884  d_max 1.000  cuts  0     3.0 min elapsed, ~  3.0 min left
+      h=0.2 l_b=0.1 x1  lambda 0.583  load       5.026  d_max 1.000  cuts  0     4.2 min elapsed, ~  3.0 min left
+      h=0.2 l_b=0.1 x1  lambda 0.667  load         4.4  d_max 1.000  cuts  0     6.7 min elapsed, ~  3.3 min left
+      h=0.2 l_b=0.1 x1  lambda 0.750  load      0.1845  d_max 1.000  cuts  0     9.5 min elapsed, ~  3.2 min left
+      h=0.2 l_b=0.1 x1  lambda 0.833  load      0.1328  d_max 1.000  cuts  0    10.5 min elapsed, ~  2.1 min left
+      h=0.2 l_b=0.1 x1  lambda 0.917  load      0.1062  d_max 1.000  cuts  0    11.1 min elapsed, ~  1.0 min left
+      h=0.2 l_b=0.1 x1  lambda 1.000  load     0.08847  d_max 1.000  cuts  0    11.6 min elapsed, ~  0.0 min left
+  h = 0.2 ref: load still rising at the end of the path; extending x2
+      h=0.2 l_b=0 x2  lambda 0.042  load      0.1515  d_max 1.000  cuts  0     0.3 min elapsed, ~  7.2 min left
+      h=0.2 l_b=0 x2  lambda 0.083  load      0.3021  d_max 1.000  cuts  0     0.5 min elapsed, ~  5.8 min left
+      h=0.2 l_b=0 x2  lambda 0.125  load      0.4507  d_max 1.000  cuts  0     0.8 min elapsed, ~  5.9 min left
+      h=0.2 l_b=0 x2  lambda 0.167  load      0.5962  d_max 1.000  cuts  0     1.2 min elapsed, ~  5.8 min left
+      h=0.2 l_b=0 x2  lambda 0.208  load      0.7375  d_max 1.000  cuts  0     1.5 min elapsed, ~  5.6 min left
+      h=0.2 l_b=0 x2  lambda 0.250  load      0.8734  d_max 1.000  cuts  0     1.9 min elapsed, ~  5.7 min left
+      h=0.2 l_b=0 x2  lambda 0.292  load       1.003  d_max 1.000  cuts  0     2.3 min elapsed, ~  5.6 min left
+      h=0.2 l_b=0 x2  lambda 0.333  load       1.124  d_max 1.000  cuts  0     2.8 min elapsed, ~  5.7 min left
+      h=0.2 l_b=0 x2  lambda 0.375  load       1.235  d_max 1.000  cuts  0     3.4 min elapsed, ~  5.6 min left
+      h=0.2 l_b=0 x2  lambda 0.417  load       1.334  d_max 1.000  cuts  0     4.0 min elapsed, ~  5.6 min left
+      h=0.2 l_b=0 x2  lambda 0.458  load       1.418  d_max 1.000  cuts  0     4.9 min elapsed, ~  5.8 min left
+      h=0.2 l_b=0 x2  lambda 0.500  load       1.482  d_max 1.000  cuts  0     6.3 min elapsed, ~  6.3 min left
+      h=0.2 l_b=0 x2  lambda 0.542  load       1.517  d_max 1.000  cuts  0     7.5 min elapsed, ~  6.3 min left
+      h=0.2 l_b=0 x2  lambda 0.583  load       1.505  d_max 1.000  cuts  0     9.3 min elapsed, ~  6.7 min left
+      h=0.2 l_b=0 x2  lambda 0.625  load       1.361  d_max 1.000  cuts  0    12.1 min elapsed, ~  7.2 min left  [past peak, stopping]
+      h=0.3 l_b=0 x1  lambda 0.083  load      0.2852  d_max 1.000  cuts  0     0.8 min elapsed, ~  8.4 min left
+      h=0.3 l_b=0 x1  lambda 0.167  load      0.5685  d_max 1.000  cuts  0     1.3 min elapsed, ~  6.5 min left
+      h=0.3 l_b=0 x1  lambda 0.250  load      0.8473  d_max 1.000  cuts  0     2.5 min elapsed, ~  7.4 min left
+      h=0.3 l_b=0 x1  lambda 0.333  load       1.119  d_max 1.000  cuts  0    18.5 min elapsed, ~ 37.1 min left
+      h=0.3 l_b=0 x1  lambda 0.417  load       1.382  d_max 1.000  cuts  0    19.8 min elapsed, ~ 27.7 min left
+      h=0.3 l_b=0 x1  lambda 0.500  load       1.632  d_max 1.000  cuts  0    30.1 min elapsed, ~ 30.1 min left
+      h=0.3 l_b=0 x1  lambda 0.583  load       1.865  d_max 1.000  cuts  0    48.4 min elapsed, ~ 34.6 min left
+      h=0.3 l_b=0 x1  lambda 0.667  load        2.07  d_max 1.000  cuts  0    66.0 min elapsed, ~ 33.0 min left
+      h=0.3 l_b=0 x1  lambda 0.750  load       2.234  d_max 1.000  cuts  0    84.6 min elapsed, ~ 28.2 min left
+      h=0.3 l_b=0 x1  lambda 0.833  load       2.339  d_max 1.000  cuts  0    88.6 min elapsed, ~ 17.7 min left
+      h=0.3 l_b=0 x1  lambda 0.917  load       2.272  d_max 1.000  cuts  0    95.7 min elapsed, ~  8.7 min left
+      h=0.3 l_b=0 x1  lambda 1.000  load        1.76  d_max 1.000  cuts  0   102.1 min elapsed, ~  0.0 min left
+      h=0.3 l_b=0.1 x1  lambda 0.083  load       1.105  d_max 1.000  cuts  0     0.7 min elapsed, ~  7.8 min left
+      h=0.3 l_b=0.1 x1  lambda 0.167  load       2.178  d_max 1.000  cuts  0     1.4 min elapsed, ~  7.1 min left
+      h=0.3 l_b=0.1 x1  lambda 0.250  load       3.188  d_max 1.000  cuts  0     2.4 min elapsed, ~  7.1 min left
+      h=0.3 l_b=0.1 x1  lambda 0.333  load       4.105  d_max 1.000  cuts  0     3.3 min elapsed, ~  6.6 min left
+      h=0.3 l_b=0.1 x1  lambda 0.417  load       4.898  d_max 1.000  cuts  0     4.7 min elapsed, ~  6.6 min left
+      h=0.3 l_b=0.1 x1  lambda 0.500  load       5.534  d_max 1.000  cuts  0     6.3 min elapsed, ~  6.3 min left
+      h=0.3 l_b=0.1 x1  lambda 0.583  load       5.952  d_max 1.000  cuts  0     9.3 min elapsed, ~  6.7 min left
+      h=0.3 l_b=0.1 x1  lambda 0.667  load       5.848  d_max 1.000  cuts  0    31.4 min elapsed, ~ 15.7 min left
+      h=0.3 l_b=0.1 x1  lambda 0.750  load      0.4321  d_max 1.000  cuts  0    39.3 min elapsed, ~ 13.1 min left
+      h=0.3 l_b=0.1 x1  lambda 0.833  load      0.1424  d_max 1.000  cuts  0    41.9 min elapsed, ~  8.4 min left
+      h=0.3 l_b=0.1 x1  lambda 0.917  load      0.1253  d_max 1.000  cuts  0    44.2 min elapsed, ~  4.0 min left
+      h=0.3 l_b=0.1 x1  lambda 1.000  load      0.1143  d_max 1.000  cuts  0    46.2 min elapsed, ~  0.0 min left
+  h = 0.4: identical to the existing sweep, imported
+      h=0.6 l_b=0 x1  lambda 0.083  load      0.6629  d_max 1.000  cuts  0     4.8 min elapsed, ~ 52.9 min left
+      h=0.6 l_b=0 x1  lambda 0.167  load       1.318  d_max 1.000  cuts  0     8.6 min elapsed, ~ 42.9 min left
+      h=0.6 l_b=0 x1  lambda 0.250  load       1.958  d_max 1.000  cuts  0    55.6 min elapsed, ~166.9 min left
+      h=0.6 l_b=0 x1  lambda 0.333  load       2.571  d_max 1.000  cuts  0   116.5 min elapsed, ~233.0 min left
+      h=0.6 l_b=0 x1  lambda 0.417  load       3.144  d_max 1.000  cuts  0   148.5 min elapsed, ~207.9 min left
+      h=0.6 l_b=0 x1  lambda 0.500  load       3.649  d_max 1.000  cuts  0   161.9 min elapsed, ~161.9 min left
+      h=0.6 l_b=0 x1  lambda 0.583  load       3.972  d_max 1.000  cuts  0   209.1 min elapsed, ~149.4 min left
+      h=0.6 l_b=0 x1  lambda 0.667  load        3.15  d_max 1.000  cuts  0   235.0 min elapsed, ~117.5 min left
+      h=0.6 l_b=0 x1  lambda 0.750  load       2.168  d_max 1.000  cuts  0   261.6 min elapsed, ~ 87.2 min left
+      h=0.6 l_b=0 x1  lambda 0.833  load       1.536  d_max 1.000  cuts  0   296.5 min elapsed, ~ 59.3 min left
+      h=0.6 l_b=0 x1  lambda 0.917  load       1.168  d_max 1.000  cuts  0   330.9 min elapsed, ~ 30.1 min left
+      h=0.6 l_b=0 x1  lambda 1.000  load      0.9174  d_max 1.000  cuts  0   357.3 min elapsed, ~  0.0 min left
+      h=0.6 l_b=0.1 x1  lambda 0.083  load       1.206  d_max 1.000  cuts  0     2.9 min elapsed, ~ 32.4 min left
+      h=0.6 l_b=0.1 x1  lambda 0.167  load       2.391  d_max 1.000  cuts  0     5.9 min elapsed, ~ 29.4 min left
+      h=0.6 l_b=0.1 x1  lambda 0.250  load       3.532  d_max 1.000  cuts  0     9.7 min elapsed, ~ 29.1 min left
+      h=0.6 l_b=0.1 x1  lambda 0.333  load       4.604  d_max 1.000  cuts  0    14.5 min elapsed, ~ 28.9 min left
+      h=0.6 l_b=0.1 x1  lambda 0.417  load       5.574  d_max 1.000  cuts  0    21.1 min elapsed, ~ 29.6 min left
+      h=0.6 l_b=0.1 x1  lambda 0.500  load       6.382  d_max 1.000  cuts  0    32.5 min elapsed, ~ 32.5 min left
+      h=0.6 l_b=0.1 x1  lambda 0.583  load       6.482  d_max 1.000  cuts  0    56.3 min elapsed, ~ 40.2 min left
+      h=0.6 l_b=0.1 x1  lambda 0.667  load       4.505  d_max 1.000  cuts  0    80.0 min elapsed, ~ 40.0 min left
+      h=0.6 l_b=0.1 x1  lambda 0.750  load        2.34  d_max 1.000  cuts  0   103.6 min elapsed, ~ 34.5 min left
+      h=0.6 l_b=0.1 x1  lambda 0.833  load      0.1032  d_max 1.000  cuts  0   127.5 min elapsed, ~ 25.5 min left
+      h=0.6 l_b=0.1 x1  lambda 0.917  load     0.08913  d_max 1.000  cuts  0   143.4 min elapsed, ~ 13.0 min left
+      h=0.6 l_b=0.1 x1  lambda 1.000  load     0.07937  d_max 1.000  cuts  0   154.9 min elapsed, ~  0.0 min left
 
       h   l/h  l_b/h     P ref      P mp  ratio    sN ref     sN mp  pk step  notch/clamp ref  notch/clamp mp       min
   ----------------------------------------------------------------------------------------------------------------------
-   0.20  0.20  0.500     1.512      4.99  3.300      7372 2.433e+04  12/6      1.000/0.126      1.000/0.299     11/10  
-   0.30  0.13  0.333     2.332     5.928  2.542      7580 1.927e+04   9/6      0.998/0.073      0.998/0.200     24/23  
-   0.40  0.10  0.250     2.948     6.342  2.151      7185 1.546e+04   8/6      0.999/0.078      0.999/0.133    nan/nan 
+   0.20  0.20  0.500     1.517     5.026  3.312      7397  2.45e+04  12/6      1.000/0.121      1.000/0.257     12/12  
+   0.30  0.13  0.333     2.339     5.952  2.545      7603 1.935e+04   9/6      0.998/0.061      0.997/0.162    102/46  
+   0.40  0.10  0.250     2.968     6.362  2.143      7235 1.551e+04   8/6      0.999/0.063      0.999/0.105    nan/nan 
+   0.60  0.07  0.167     3.972     6.482  1.632      6454 1.053e+04   6/6      1.000/0.064      1.000/0.085    357/155 
 
   A peak step below ~4 means the peak is under-sampled; a clamp damage close to
   the notch damage means the beam did not crack where the size series assumes.
