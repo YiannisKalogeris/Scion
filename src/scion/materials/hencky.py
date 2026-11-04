@@ -60,7 +60,7 @@ _MIN_STRETCH = 1.0e-6
 
 def _reassemble(U: np.ndarray, diag: np.ndarray, W: np.ndarray) -> np.ndarray:
     """``U diag(d) W^T`` for stacks."""
-    return np.einsum("pij,pj,pkj->pik", U, diag, W)
+    return np.einsum("pij,pj,pkj->pik", U, diag, W, optimize=True)
 
 
 # ---------------------------------------------------------------------------

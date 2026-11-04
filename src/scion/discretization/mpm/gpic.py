@@ -215,7 +215,7 @@ class SolidBody:
         P, _ = material.pk1(self.F.reshape(shape))
         P = P.reshape(self.n_el, self.n_qp, self.dim, self.dim)
 
-        fe = -np.einsum("eq,eqij,eqaj->eai", self.w0, P, self.dN_dX)
+        fe = -np.einsum("eq,eqij,eqaj->eai", self.w0, P, self.dN_dX, optimize=True)
         f = np.zeros_like(self.x)
         np.add.at(f, self.conn, fe)
         return f

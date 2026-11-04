@@ -179,8 +179,8 @@ class ElastoplasticAssembler:
         s = sigma.reshape(self.n_elements, self.n_qp, nv)
 
         ke = np.einsum("eqab,eqbc,eqcd,eq->ead",
-                       np.swapaxes(self.B, 2, 3), C, self.B, self.w)
-        fe = np.einsum("eqab,eqa,eq->eb", self.B, s, self.w)
+                       np.swapaxes(self.B, 2, 3), C, self.B, self.w, optimize=True)
+        fe = np.einsum("eqab,eqa,eq->eb", self.B, s, self.w, optimize=True)
 
         K = sparse.csr_matrix((ke.ravel(), (self._rows, self._cols)),
                               shape=(self.n_dof, self.n_dof))

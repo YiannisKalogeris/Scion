@@ -299,7 +299,7 @@ class Spectral(Split):
                 T[:, i, j, j, i] += 0.5 * theta
 
         # rotate: P_ijkl = Q_iI Q_jJ Q_kK Q_lL T_IJKL
-        return np.einsum("nia,njb,nkc,nld,nabcd->nijkl", Q, Q, Q, Q, T)
+        return np.einsum("nia,njb,nkc,nld,nabcd->nijkl", Q, Q, Q, Q, T, optimize=True)
 
     def stress_tangent(self, eps, lam, mu):
         n, dim = eps.shape[0], eps.shape[1]
@@ -307,8 +307,8 @@ class Spectral(Split):
         tr = w.sum(axis=1)
         I = _identity(n, dim)
 
-        eps_p = np.einsum("nia,na,nja->nij", Q, _pos(w), Q)
-        eps_m = np.einsum("nia,na,nja->nij", Q, _neg(w), Q)
+        eps_p = np.einsum("nia,na,nja->nij", Q, _pos(w), Q, optimize=True)
+        eps_m = np.einsum("nia,na,nja->nij", Q, _neg(w), Q, optimize=True)
 
         sig_p = lam * _pos(tr)[:, None, None] * I + 2.0 * mu * eps_p
         sig_m = lam * _neg(tr)[:, None, None] * I + 2.0 * mu * eps_m

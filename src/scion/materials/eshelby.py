@@ -359,16 +359,16 @@ def l_integral(sigma: np.ndarray, position: np.ndarray, volume: np.ndarray,
     if d == 2:
         # e_3ij X_i Sigma_jL, and 2 axial(skew)_3 = Sigma_21 - Sigma_12
         M = (X[:, 0, None] * sigma[:, 1, :] - X[:, 1, None] * sigma[:, 0, :])
-        contour = -np.einsum("p,pL,pL->", vol, M, gq)
-        source = -np.einsum("p,p,p->", vol, 2.0 * skew[:, 1, 0], qq)
+        contour = -np.einsum("p,pL,pL->", vol, M, gq, optimize=True)
+        source = -np.einsum("p,p,p->", vol, 2.0 * skew[:, 1, 0], qq, optimize=True)
         return contour + source
     eps = np.zeros((3, 3, 3))
     eps[0, 1, 2] = eps[1, 2, 0] = eps[2, 0, 1] = 1.0
     eps[0, 2, 1] = eps[2, 1, 0] = eps[1, 0, 2] = -1.0
-    M = np.einsum("kij,pi,pjL->pkL", eps, X, sigma)
-    contour = -np.einsum("p,pkL,pL->k", vol, M, gq)
+    M = np.einsum("kij,pi,pjL->pkL", eps, X, sigma, optimize=True)
+    contour = -np.einsum("p,pkL,pL->k", vol, M, gq, optimize=True)
     ax = np.stack([skew[:, 2, 1], skew[:, 0, 2], skew[:, 1, 0]], axis=1)
-    source = -np.einsum("p,pk,p->k", vol, 2.0 * ax, qq)
+    source = -np.einsum("p,pk,p->k", vol, 2.0 * ax, qq, optimize=True)
     return contour + source
 
 
@@ -443,7 +443,7 @@ def total_pseudomomentum(mass: np.ndarray, F: np.ndarray,
     other, which is the point of measuring it.
     """
     mass = np.asarray(mass, dtype=float)
-    return -np.einsum("p,pji,pj->i", mass, np.asarray(F), np.asarray(v))
+    return -np.einsum("p,pji,pj->i", mass, np.asarray(F), np.asarray(v), optimize=True)
 
 
 def material_force(sigma: np.ndarray, volume: np.ndarray,
@@ -475,7 +475,7 @@ def material_force(sigma: np.ndarray, volume: np.ndarray,
     here computes a different object -- pull them back with ``F^T`` first.
     """
     return np.einsum("p,pij,pkj->pki", np.asarray(volume, dtype=float),
-                     np.asarray(sigma), np.asarray(grad_w))
+                     np.asarray(sigma), np.asarray(grad_w), optimize=True)
 
 
 def j_integral(sigma: np.ndarray, volume: np.ndarray,
@@ -514,4 +514,4 @@ def j_integral(sigma: np.ndarray, volume: np.ndarray,
     ``J``, which looks like a factor-of-two convention error and is not.
     """
     return -np.einsum("p,pkj,pj->k", np.asarray(volume, dtype=float),
-                      np.asarray(sigma), np.asarray(grad_q))
+                      np.asarray(sigma), np.asarray(grad_q), optimize=True)

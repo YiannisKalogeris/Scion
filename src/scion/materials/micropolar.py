@@ -280,7 +280,7 @@ class MicropolarTransverselyIsotropic(MicropolarHooke):
     @property
     def _MM(self) -> np.ndarray:
         a = self.fibre
-        return np.einsum("i,j,k,l->ijkl", a, a, a, a)
+        return np.einsum("i,j,k,l->ijkl", a, a, a, a, optimize=True)
 
     @property
     def D(self) -> np.ndarray:
@@ -298,10 +298,10 @@ class MicropolarTransverselyIsotropic(MicropolarHooke):
         a = self.fibre
         M = np.einsum("i,j->ij", a, a)
         if self.k_fibre:
-            aEa = np.einsum("i,nij,j->n", a, np.asarray(E, dtype=float), a)
+            aEa = np.einsum("i,nij,j->n", a, np.asarray(E, dtype=float), a, optimize=True)
             B = B + self.k_fibre * aEa[:, None, None] * M
         if self.k_fibre_curvature:
-            aGa = np.einsum("i,nij,j->n", a, np.asarray(Gamma, dtype=float), a)
+            aGa = np.einsum("i,nij,j->n", a, np.asarray(Gamma, dtype=float), a, optimize=True)
             S = S + self.k_fibre_curvature * aGa[:, None, None] * M
         return B, S
 

@@ -61,6 +61,15 @@ impl Scatter {
     pub fn n_nodes(&self) -> usize { self.n_nodes }
     pub fn n_entries(&self) -> usize { self.n_entries }
 
+    /// Flat stencil entries `p * npe + l` touching node `n`, ascending.
+    ///
+    /// Exposed for `block_csr`, which needs the same ownership split: one
+    /// node per thread, its entries in ascending order, so a block assembly
+    /// inherits the bit-identity argument above rather than restating it.
+    pub fn entries_of(&self, n: usize) -> &[u32] {
+        &self.entries[self.offsets[n]..self.offsets[n + 1]]
+    }
+
     /// Accumulate `vals` into columns `col .. col + k` of `out`.
     ///
     /// `out` is `(n_nodes, ncomp)` row-major and `vals` is `(n_entries, k)`.

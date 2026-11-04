@@ -97,3 +97,53 @@ def test_rejects_an_out_of_range_node():
     ids = np.array([[0, 99]], dtype=np.int64)
     with pytest.raises(ValueError, match="outside"):
         Scatter(ids, 3)
+
+
+# ----------------------------------------------------------------------
+class TestNativeCsr:
+    """The CSR path is opt-in because it is NOT result-neutral.
+
+    It differs from SciPy by about an ulp and keeps entries SciPy prunes as
+    exact zeros, so the default must stay on SciPy and the switch must be
+    explicit.
+    """
+
+    def test_default_is_off(self):
+        from scion.discretization.mpm.rust import native_csr_enabled
+        assert native_csr_enabled() is False
+
+    def test_off_reproduces_scipy_exactly(self):
+        from scipy import sparse
+        from scion.discretization.mpm.rust import coo_to_csr
+        rng = np.random.default_rng(1)
+        r = rng.integers(0, 80, 20000).astype(np.int64)
+        c = rng.integers(0, 80, 20000).astype(np.int64)
+        v = rng.standard_normal(20000)
+        want = sparse.coo_matrix((v, (r, c)), shape=(80, 80)).tocsr()
+        got = coo_to_csr(r, c, v, (80, 80))            # default: off
+        assert np.array_equal(got.data, want.data)
+        assert np.array_equal(got.indices, want.indices)
+
+    def test_on_agrees_with_scipy_to_an_ulp(self):
+        from scipy import sparse
+        from scion.discretization.mpm.rust import coo_to_csr
+        rng = np.random.default_rng(2)
+        r = rng.integers(0, 80, 20000).astype(np.int64)
+        c = rng.integers(0, 80, 20000).astype(np.int64)
+        v = rng.standard_normal(20000)
+        want = sparse.coo_matrix((v, (r, c)), shape=(80, 80)).tocsr()
+        got = coo_to_csr(r, c, v, (80, 80), native=True)
+        assert abs(got - want).max() / abs(want).max() < 1e-15
+
+    def test_native_and_its_fallback_agree_to_the_bit(self, monkeypatch):
+        """Switching the extension off must not change the opted-in answer."""
+        import scion.discretization.mpm.rust as rust
+        rng = np.random.default_rng(3)
+        r = rng.integers(0, 60, 15000).astype(np.int64)
+        c = rng.integers(0, 60, 15000).astype(np.int64)
+        v = rng.standard_normal(15000)
+        a = rust.coo_to_csr(r, c, v, (60, 60), native=True)
+        monkeypatch.setattr(rust, "_rs", None)
+        b = rust.coo_to_csr(r, c, v, (60, 60), native=True)
+        assert np.array_equal(a.data, b.data)
+        assert np.array_equal(a.indices, b.indices)

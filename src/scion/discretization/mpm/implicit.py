@@ -436,7 +436,7 @@ class ImplicitMPMStepper:
         P, _ = self.material.pk1(self._deformation(du))
         f = np.zeros((self._n_nodes_eff, grid.dim))
         np.add.at(f, st.node_id,
-                  np.einsum("p,piB,pkB->pki", self._vol0, P, self._b))
+                  np.einsum("p,piB,pkB->pki", self._vol0, P, self._b, optimize=True))
         out = f.ravel()
         # the penalty must appear in the residual as well as the tangent, or
         # the two describe different problems and Newton converges linearly
@@ -452,7 +452,7 @@ class ImplicitMPMStepper:
 
         # (n, k, d, k, d): b_IB A_iBjT b_JT, weighted by the particle volume
         ke = np.einsum("p,pKB,piBjT,pLT->pKiLj", self._vol0, self._b, A,
-                       self._b)
+                       self._b, optimize=True)
 
         dofs = (st.node_id[:, :, None] * d
                 + np.arange(d)[None, None, :]).reshape(st.node_id.shape[0], -1)

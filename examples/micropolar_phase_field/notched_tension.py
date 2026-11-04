@@ -444,7 +444,7 @@ def make_figures(rows, classical, tag=""):
                     else rf"micropolar, $\ell_b/\ell = {r['l_b_over_l']:g}$",
                     fontsize=9)
     fig.colorbar(s, ax=axes, shrink=0.7, label="$d$")
-    fig.suptitle(rf"damage at a common load level $\lambda = {lam_c:.3f}$",
+    fig.suptitle(rf"damage at a common load level $t = {lam_c:.3f}$",
                  fontsize=10, y=0.97 if two_row else 1.02)
     p = RESULTS / f"tension_damage{tag}.png"
     fig.savefig(p, dpi=180, bbox_inches="tight"); plt.close(fig)

@@ -165,19 +165,19 @@ class MPMQuadratureTables:
         c = np.asarray(coeff, dtype=float)
         c = (np.full(self.w.shape, float(c)) if c.ndim == 0
              else c.reshape(self.n_elements, self.n_qp))
-        ke = np.einsum("eqai,eqbi,eq,eq->eab", self.dN, self.dN, c, self.w)
+        ke = np.einsum("eqai,eqbi,eq,eq->eab", self.dN, self.dN, c, self.w, optimize=True)
         return self.scatter(ke, n_dof)
 
     def mass(self, coeff, n_dof: int) -> sparse.csr_matrix:
         c = np.asarray(coeff, dtype=float)
         c = (np.full(self.w.shape, float(c)) if c.ndim == 0
              else c.reshape(self.n_elements, self.n_qp))
-        ke = np.einsum("eqa,eqb,eq,eq->eab", self.N, self.N, c, self.w)
+        ke = np.einsum("eqa,eqb,eq,eq->eab", self.N, self.N, c, self.w, optimize=True)
         return self.scatter(ke, n_dof)
 
     def load(self, c_qp: np.ndarray, n_dof: int) -> np.ndarray:
         c = np.asarray(c_qp, dtype=float).reshape(self.n_elements, self.n_qp)
-        fe = np.einsum("eqa,eq,eq->ea", self.N, c, self.w)
+        fe = np.einsum("eqa,eq,eq->ea", self.N, c, self.w, optimize=True)
         out = np.zeros(n_dof)
         np.add.at(out, self.scalar_edofs.ravel(), fe.ravel())
         return out
@@ -193,8 +193,8 @@ class MPMQuadratureTables:
         s = np.asarray(sigma_voigt, dtype=float).reshape(
             self.n_elements, self.n_qp, nv)
         ke = np.einsum("eqab,eqbc,eqcd,eq->ead",
-                       np.swapaxes(self.B, 2, 3), C, self.B, self.w)
-        fe = np.einsum("eqab,eqa,eq->eb", self.B, s, self.w)
+                       np.swapaxes(self.B, 2, 3), C, self.B, self.w, optimize=True)
+        fe = np.einsum("eqab,eqa,eq->eb", self.B, s, self.w, optimize=True)
         nd = self.u_edofs.shape[1]
         rows = np.repeat(self.u_edofs, nd, axis=1).ravel()
         cols = np.tile(self.u_edofs, (1, nd)).ravel()

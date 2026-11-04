@@ -102,7 +102,7 @@ def dexp_symmetric(X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
             f"state has overflowed and the load step must be cut")
     lam, vec = np.linalg.eigh(X)                     # (n, 3), (n, 3, 3)
     exp_lam = np.exp(lam)
-    expX = np.einsum("nia,na,nja->nij", vec, exp_lam, vec)
+    expX = np.einsum("nia,na,nja->nij", vec, exp_lam, vec, optimize=True)
 
     d = lam[:, :, None] - lam[:, None, :]            # (n, 3, 3)
     mean = 0.5 * (exp_lam[:, :, None] + exp_lam[:, None, :])
@@ -114,7 +114,7 @@ def dexp_symmetric(X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
                  mean * (1.0 + d ** 2 / 24.0),
                  (exp_lam[:, :, None] - exp_lam[:, None, :]) / safe)
 
-    dexp = np.einsum("nab,nia,njb,nka,nlb->nijkl", g, vec, vec, vec, vec)
+    dexp = np.einsum("nab,nia,njb,nka,nlb->nijkl", g, vec, vec, vec, vec, optimize=True)
     # Symmetrised in the *argument* pair. The raw spectral form obeys
     # ``E_ijkl = E_jilk`` but not ``E_ijkl = E_ijlk``, so contracting it with a
     # symmetric argument silently picks the symmetric part anyway -- making
@@ -227,8 +227,8 @@ class MicropolarDruckerPrager:
         B = np.einsum("abgp,ngp->nab", self._D, Ue - np.eye(3))
         S = np.einsum("abgp,ngp->nab", self._Dc, Gam_e)
         Fe = np.einsum("nia,nab->nib", Q, Ue)
-        tau = np.einsum("nia,nab,njb->nij", Q, B, Fe)
-        nu = np.einsum("nia,nab,njb->nij", Q, S, F)
+        tau = np.einsum("nia,nab,njb->nij", Q, B, Fe, optimize=True)
+        nu = np.einsum("nia,nab,njb->nij", Q, S, F, optimize=True)
         return tau, nu, B, S, Fe
 
     def invariants(self, tau, nu):
@@ -262,9 +262,9 @@ class MicropolarDruckerPrager:
         n_tau, n_nu = self.flow(s, nu, q)
 
         expX, dexp = dexp_symmetric(-dg[:, None, None] * n_tau)
-        r_U = Ue - np.einsum("nja,njk,nki->nai", Q, expX, Fe_tr)
+        r_U = Ue - np.einsum("nja,njk,nki->nai", Q, expX, Fe_tr, optimize=True)
         r_G = (Gam_e + dg[:, None, None]
-               * np.einsum("nir,nij,nje->nre", Q, n_nu, F) - Gam_tr)
+               * np.einsum("nir,nij,nje->nre", Q, n_nu, F, optimize=True) - Gam_tr)
         r_chi = chi - chi_old - dg
         f = self.yield_function(p, q, chi, k)
         work = dict(tau=tau, nu=nu, B=B, S=S, Fe=Fe, p=p, s=s, q=q,
@@ -292,14 +292,14 @@ class MicropolarDruckerPrager:
         P1 = (2.0 * B + np.einsum("aatp->tp", D)[None]) / 3.0
 
         # ds/dU^e, symmetrised in its first pair
-        t1 = np.einsum("nka,nlb,abtp->nkltp", Q, Fe, D)
-        t2 = np.einsum("nka,nap,nlt->nkltp", Q, B, Q)
+        t1 = np.einsum("nka,nlb,abtp->nkltp", Q, Fe, D, optimize=True)
+        t2 = np.einsum("nka,nap,nlt->nkltp", Q, B, Q, optimize=True)
         A1 = 0.5 * (t1 + t1.transpose(0, 2, 1, 3, 4)
                     + t2 + t2.transpose(0, 2, 1, 3, 4))
         A1 = A1 - np.einsum("kl,ntp->nkltp", eye, P1)
 
         A2 = 1.5 * np.einsum("nkl,nkltp->ntp", s, A1) / qs[:, None, None]
-        NG = np.einsum("nia,abtp,njb->nijtp", Q, Dc, F)
+        NG = np.einsum("nia,abtp,njb->nijtp", Q, Dc, F, optimize=True)
         A3 = (1.5 / l2) * np.einsum("nij,nijtp->ntp", nu, NG) / qs[:, None, None]
 
         inv_q = (1.0 / qs)[:, None, None, None, None]
@@ -312,7 +312,7 @@ class MicropolarDruckerPrager:
                   - (1.5 / l2) * np.einsum("nij,ntp->nijtp", nu, A3) * inv_q2)
 
         # W absorbs the exponential's derivative and both push-forwards
-        W = np.einsum("nja,njkmp,nki->naimp", Q, dexp, Fe_tr)
+        W = np.einsum("nja,njkmp,nki->naimp", Q, dexp, Fe_tr, optimize=True)
         g = dg[:, None, None, None, None]
 
         C = np.zeros((n, 20, 20))
@@ -324,10 +324,10 @@ class MicropolarDruckerPrager:
         C[:, 0:9, 19] = np.einsum("naimp,nmp->nai", W, n_tau).reshape(n, 9)
 
         C[:, 9:18, 0:9] = (g * np.einsum(
-            "nir,nijtq,nje->nretq", Q, dNn_dU, F)).reshape(n, 9, 9)
+            "nir,nijtq,nje->nretq", Q, dNn_dU, F, optimize=True)).reshape(n, 9, 9)
         C[:, 9:18, 9:18] = ident + (g * np.einsum(
-            "nir,nijtq,nje->nretq", Q, dNn_dG, F)).reshape(n, 9, 9)
-        C[:, 9:18, 19] = np.einsum("nir,nij,nje->nre", Q, n_nu, F).reshape(n, 9)
+            "nir,nijtq,nje->nretq", Q, dNn_dG, F, optimize=True)).reshape(n, 9, 9)
+        C[:, 9:18, 19] = np.einsum("nir,nij,nje->nre", Q, n_nu, F, optimize=True).reshape(n, 9)
 
         C[:, 18, 18] = 1.0
         C[:, 18, 19] = -1.0
@@ -702,7 +702,7 @@ class MicropolarDruckerPrager:
         dNn_dF = ((1.5 / l2) * np.einsum("jm,nit->nijmt", eye, QS) * iq
                   - (1.5 / l2) * np.einsum("nij,nmt->nijmt", nu, dq_dF) * iq2)
 
-        W = np.einsum("nja,njkmp,nki->naimp", Q, dexp, Fe_tr)
+        W = np.einsum("nja,njkmp,nki->naimp", Q, dexp, Fe_tr, optimize=True)
         g = dg[:, None, None, None, None]
 
         T = np.zeros((n, 20, self.n_inputs))
@@ -717,16 +717,16 @@ class MicropolarDruckerPrager:
                         np.einsum("nmk,nki->nmi", expX, Fe_tr))[:, :, :, :, :]
         ).reshape(n, 9, 9)
         T[:, 0:9, sl["Fe_tr"]] = -np.einsum(
-            "nja,njk,ip->naikp", Q, expX, eye).reshape(n, 9, 9)
+            "nja,njk,ip->naikp", Q, expX, eye, optimize=True).reshape(n, 9, 9)
 
         # --- r_Gamma ---------------------------------------------------
         T[:, 9:18, sl["F"]] = (
-            g * (np.einsum("nir,nijmt,nje->nremt", Q, dNn_dF, F)
-                 + np.einsum("nir,nim,et->nremt", Q, n_nu, eye))
+            g * (np.einsum("nir,nijmt,nje->nremt", Q, dNn_dF, F, optimize=True)
+                 + np.einsum("nir,nim,et->nremt", Q, n_nu, eye, optimize=True))
         ).reshape(n, 9, 9)
         T[:, 9:18, sl["Q"]] = (
-            g * (np.einsum("nir,nijmt,nje->nremt", Q, dNn_dQ, F)
-                 + np.einsum("rt,nmj,nje->nremt", eye, n_nu, F))
+            g * (np.einsum("nir,nijmt,nje->nremt", Q, dNn_dQ, F, optimize=True)
+                 + np.einsum("rt,nmj,nje->nremt", eye, n_nu, F, optimize=True))
         ).reshape(n, 9, 9)
         T[:, 9:18, sl["Gam_tr"]] = -np.einsum(
             "ra,eb->reab", eye, eye).reshape(9, 9)[None]

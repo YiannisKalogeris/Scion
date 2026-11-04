@@ -54,10 +54,10 @@ from __future__ import annotations
 
 import numpy as np
 from scipy import sparse
-from scipy.sparse import linalg as spla
 
 from ..discretization.mpm.tables import MPMQuadratureTables
 from ..solvers.bound_constrained import solve_bounded
+from .phase_field_fracture import solve_phase_field_system
 
 __all__ = ["MicropolarPhaseFieldMPM"]
 
@@ -97,6 +97,19 @@ class MicropolarPhaseFieldMPM:
         self._d_n = None
         self._supported = self.tables.supported_nodes()
         self._unsupported = np.flatnonzero(~self._supported)
+        # The gradient operator, built on first use. The phase-field tables
+        # are built once here at the particles' *reference* positions and
+        # never refreshed -- that is the discretisation, not an optimisation,
+        # so this operator and the unsupported set with it are constant for
+        # the whole run. Rebuilding it per stagger cost 26% of the damage
+        # solve at ``a/dx = 6``.
+        self._K_grad = None
+        #: Linear solver for the phase-field system. ``None`` is SciPy's
+        #: direct solve; see `solve_phase_field_system` for what to set it to
+        #: and what it costs in the last digits. That direct solve is
+        #: ``N^2.46`` here, so at production resolution it is the wall and not
+        #: merely a cost.
+        self.damage_solver = None
         self.history: list[dict] = []
 
     # ------------------------------------------------------------------
@@ -194,11 +207,13 @@ class MicropolarPhaseFieldMPM:
         H_n = self.H if self._H_n is None else self._H_n
         d_n = self.d if self._d_n is None else self._d_n
         self.H = np.maximum(H_n, self.driving_energy())
-        K_grad = self.tables.laplacian(self.model.gradient_coefficient(),
-                                       self.n_nodes).tolil()
-        if self._unsupported.size:
-            K_grad[self._unsupported, self._unsupported] = 1.0
-        K_grad = K_grad.tocsr()
+        if self._K_grad is None:
+            K_grad = self.tables.laplacian(self.model.gradient_coefficient(),
+                                           self.n_nodes).tolil()
+            if self._unsupported.size:
+                K_grad[self._unsupported, self._unsupported] = 1.0
+            self._K_grad = K_grad.tocsr()
+        K_grad = self._K_grad
 
         d = self.d.copy()
         max_iter = 1 if self.model.linear_phase_field else 20
@@ -213,7 +228,7 @@ class MicropolarPhaseFieldMPM:
                                     x0=np.zeros_like(d))
                 delta = res.x
             else:
-                delta = spla.spsolve(K.tocsc(), R)
+                delta = solve_phase_field_system(K, R, self.damage_solver)
             d = d + delta
             if np.linalg.norm(delta) <= 1e-10 * max(1.0, np.linalg.norm(d)):
                 break

@@ -75,6 +75,8 @@ from scion.materials.micropolar_plasticity import NonFiniteTrialState
 
 from .implicit import InvertedParticle, LoadStepResult
 from .particles import ParticleSet
+from . import rust as _rust
+from .rust import Scatter, coo_to_csr
 
 __all__ = ["MicropolarMPMStepper", "attach_micropolar_state"]
 
@@ -115,6 +117,37 @@ def attach_micropolar_state(particles: ParticleSet,
     return particles
 
 
+
+def _contract_moduli(T, dX):
+    """``einsum("pirYC,pLjYC->pLjir", T, dX)``, as a batched matmul.
+
+    `einsum` runs one generic single-threaded loop; folding the two contracted
+    axes into one turns this into a batched GEMM, which BLAS threads across
+    every core. Measured 8x at the production chunk shape, and this and
+    `_contract_gradient` together are 57% of the tangent's contraction time.
+    The last bits move by ~1e-16 because BLAS associates the sum differently.
+    """
+    pn, i, r = T.shape[0], T.shape[1], T.shape[2]
+    L, j = dX.shape[1], dX.shape[2]
+    a = T.reshape(pn, i * r, -1)
+    b = dX.reshape(pn, L * j, -1)
+    return (b @ a.transpose(0, 2, 1)).reshape(pn, L, j, i, r)
+
+
+def _contract_gradient(dT, g):
+    """``einsum("pLjir,pKr->pKiLj", dT, g)``, as a batched matmul. 15x.
+
+    The trailing transpose is the whole subtlety: the matmul naturally yields
+    ``(p, K, L, j, i)`` and the caller wants ``i`` second, so the axes are
+    permuted rather than the contraction rewritten.
+    """
+    pn, L, j, i, r = dT.shape
+    K = g.shape[1]
+    c = dT.reshape(pn, L * j * i, r)
+    out = g @ c.transpose(0, 2, 1)
+    return out.reshape(pn, K, L, j, i).transpose(0, 1, 4, 2, 3)
+
+
 class MicropolarMPMStepper:
     """Quasi-static implicit micropolar MPM, load-stepped with cut-back.
 
@@ -140,7 +173,7 @@ class MicropolarMPMStepper:
                  tol: float = 1.0e-9, energy_tol: float = 1.0e-16,
                  max_iter: int = 20, linear_solver=None,
                  support_tol: float = 1.0e-6, ghost=None,
-                 crack=None):
+                 crack=None, chunk_entries: int | None = None):
         if grid.dim != 3:
             raise NotImplementedError(
                 f"micropolar MPM is 3-D only, got a {grid.dim}-D grid. The "
@@ -193,6 +226,7 @@ class MicropolarMPMStepper:
         # the count belongs to the prepared step, not to the grid.
         self._n_nodes_eff = grid.n_nodes
         self._n_dof = grid.n_nodes * self.n_components
+        self._pattern = None
         self._dup_origin = np.zeros(0, dtype=np.int64)
         self._D = self.elastic.D
         self._Dc = self.elastic.D_curvature
@@ -210,6 +244,16 @@ class MicropolarMPMStepper:
         #: ``H -> I`` as the increment vanishes and the tangent never sees it.
         self.wryness_map = "exact"
         self._st = None
+        self._scatter = None
+        # Triplets held at once while assembling the tangent. The cap exists
+        # for memory alone, and it buys that memory at a real price: the
+        # per-chunk fixed costs (temporaries, BLAS setup, one CSR build) are
+        # amortised over `chunk_entries // (nc*npe)**2` particles, which at
+        # npe = 27 is only 152 at the default. Measured at 89,600 particles,
+        # holding everything else fixed and varying the chunk count alone:
+        # 52 chunks 4.96 s, 830 chunks 9.17 s, 14,934 chunks 80.64 s. Raise it
+        # on a machine with headroom; 4M entries is roughly 100 MB.
+        self.chunk_entries = int(chunk_entries or _CHUNK_ENTRIES)
 
     # ------------------------------------------------------------------
     # per-load-step setup
@@ -234,6 +278,7 @@ class MicropolarMPMStepper:
         # ``node_id``, so the remap separates the two faces everywhere at once.
         # The visibility test projects onto xy, which is exact for the
         # plane-strain prism this is used on -- see ``CrackPath.blocked``.
+        self._pattern = None             # the stencil is about to change
         self._dup_origin = np.zeros(0, dtype=np.int64)
         n_nodes = grid.n_nodes
         if self.crack is not None:
@@ -248,9 +293,13 @@ class MicropolarMPMStepper:
         self._st = st
         self._grad = st.grad_w.copy()          # advanced every iteration
         self._vol0 = particles.vol0
+        # node-major transpose of this stencil, reused by every scatter below
+        # and by each assembly until the stencil is rebuilt. Falls back to
+        # np.add.at when the native extension is absent.
+        self._scatter = Scatter(st.node_id, self._n_nodes_eff)
 
         support = np.zeros(self._n_nodes_eff)
-        np.add.at(support, st.node_id, self._vol0[:, None] * st.w)
+        self._scatter.add(support.reshape(-1, 1), self._vol0[:, None] * st.w)
         if self.ghost is None:
             active_node = support > self.support_tol * support.max()
         else:
@@ -398,7 +447,7 @@ class MicropolarMPMStepper:
             raise ValueError(f"wryness_map must be 'exact', 'identity' or "
                              f"'transpose', not {self.wryness_map!r}")
         particles.wryness = particles.wryness + np.einsum(
-            "pjg,pjk,pkt->pgt", Q, H, grad_dw_X)
+            "pjg,pjk,pkt->pgt", Q, H, grad_dw_X, optimize=True)
 
         # the ghost penalty acts on the *increment over the load step*, because
         # J is rebuilt each step from the current particle positions. Tracking
@@ -452,8 +501,8 @@ class MicropolarMPMStepper:
             g = np.asarray(self.degradation, dtype=float)[:, None, None]
             B, S = B * g, S * g
         Fe = np.einsum("nia,nab->nib", Q, Ue)
-        tau = np.einsum("nia,nab,njb->nij", Q, B, Fe)
-        nu = np.einsum("nia,nab,njb->nij", Q, S, F)
+        tau = np.einsum("nia,nab,njb->nij", Q, B, Fe, optimize=True)
+        nu = np.einsum("nia,nab,njb->nij", Q, S, F, optimize=True)
         return dict(Q=Q, F=F, Ue=Ue, Ge=Ge, B=B, S=S, Fe=Fe, tau=tau, nu=nu,
                     state=state)
 
@@ -468,8 +517,8 @@ class MicropolarMPMStepper:
         F = particles.F
         E = np.einsum("pji,pjk->pik", Q, F) - np.eye(3)
         B, S = self.material.stresses(E, particles.wryness)
-        J_sigma = np.einsum("pia,pab,prb->pir", Q, B, F)
-        J_mu = np.einsum("pia,pab,prb->pir", Q, S, F)
+        J_sigma = np.einsum("pia,pab,prb->pir", Q, B, F, optimize=True)
+        J_mu = np.einsum("pia,pab,prb->pir", Q, S, F, optimize=True)
         return Q, F, J_sigma, J_mu
 
     def internal_force(self, particles: ParticleSet) -> np.ndarray:
@@ -490,9 +539,9 @@ class MicropolarMPMStepper:
         axial = np.einsum("irn,prn->pi", _EPS, J_sigma)
 
         out = np.zeros((self._n_nodes_eff, self.n_components))
-        np.add.at(out[:, :3], st.node_id, V[:, None, None] * s)
-        np.add.at(out[:, 3:], st.node_id,
-                  V[:, None, None] * (c + st.w[:, :, None] * axial[:, None, :]))
+        self._scatter.add(out, V[:, None, None] * s, 0)
+        self._scatter.add(
+            out, V[:, None, None] * (c + st.w[:, :, None] * axial[:, None, :]), 3)
         flat = out.ravel()
         # the penalty is a function of the *accumulated* state, so it needs the
         # total displacement and rotation from the start of the load step, not
@@ -506,11 +555,11 @@ class MicropolarMPMStepper:
         st, grid = self._st, self.grid
         out = np.zeros((self._n_nodes_eff, self.n_components))
         if self.particle_force is not None:
-            np.add.at(out[:, :3], st.node_id,
-                      st.w[:, :, None] * self.particle_force[:, None, :])
+            self._scatter.add(
+                out, st.w[:, :, None] * self.particle_force[:, None, :], 0)
         if self.particle_couple is not None:
-            np.add.at(out[:, 3:], st.node_id,
-                      st.w[:, :, None] * self.particle_couple[:, None, :])
+            self._scatter.add(
+                out, st.w[:, :, None] * self.particle_couple[:, None, :], 3)
         return load_factor * out.ravel()
 
     # ------------------------------------------------------------------
@@ -527,16 +576,50 @@ class MicropolarMPMStepper:
 
         n, k = st.node_id.shape
         per_particle = (nc * k) ** 2
-        chunk = max(1, int(_CHUNK_ENTRIES // max(per_particle, 1)))
+        chunk = max(1, int(self.chunk_entries // max(per_particle, 1)))
 
-        K = sparse.csr_matrix((self._n_dof, self._n_dof))
+        # `node_id` is fixed for the whole load step while this runs once per
+        # Newton iteration, so the sparsity pattern is cached rather than
+        # rebuilt from triplets every time -- see `rust.BlockPattern`. One
+        # pattern for the whole matrix means the chunks accumulate into a
+        # single `data` array: no triplets, no per-chunk sort, and no
+        # binary-counter merge, which cost O(nnz log m) to add m chunk
+        # matrices up and was dominant at the ~600 chunks a production 3-D run
+        # produces. The chunking survives only to bound the block array.
+        pat = self._block_pattern()
+        data = np.zeros(pat.nnz)
         for lo in range(0, n, chunk):
-            sl = slice(lo, min(lo + chunk, n))
-            K = K + self._tangent_chunk_general(sl, c, particles)
+            hi = min(lo + chunk, n)
+            pat.accumulate(data, self._tangent_blocks(slice(lo, hi), c,
+                                                      particles), lo, hi)
+        # structural zeros pruned here, as `csr_plus_csr` used to do on every
+        # merge -- so the stored-entry count is the same as the old path's
+        K = pat.matrix(data)
         # must match the penalty term in internal_force exactly; adding it to
         # one and not the other makes the residual and the tangent describe
         # different problems, and Newton then diverges on the first iterate
         return K if self._ghost is None else K + self._ghost
+
+    def _block_pattern(self):
+        """The tangent's cached CSR pattern.
+
+        Keyed on nothing: `prepare` clears it, and `prepare` is the only place
+        the stencil changes.
+
+        Built with or without the extension, deliberately. Keeping the COO
+        path for the no-extension case would make the two backends disagree in
+        the last bits -- the merge tree associates the sums differently -- and
+        that would cost the bit-identity the rest of this module's native work
+        rests on, along with the tests asserting a backend switch changes
+        nothing. The `np.add.at` fallback was expected to be the price and is
+        not: 0.74 s against the kernel's 0.63 s and the old COO path's 1.54 s
+        on a 16k-particle tangent, because the destinations are a precomputed
+        flat index array rather than fancy indexing on a strided view.
+        """
+        if self._pattern is None:
+            self._pattern = _rust.BlockPattern(
+                self._st.node_id, self._n_nodes_eff, self.n_components)
+        return self._pattern
 
     def _tangent_chunk(self, sl, st, Q, F, J_sigma, J_mu, D, Dc):
         nc = self.n_components
@@ -553,24 +636,24 @@ class MicropolarMPMStepper:
         A = np.einsum("pkiab,abgt->pkigt", qh, D)
         Ac = np.einsum("pkiab,abgt->pkigt", qh, Dc)
         # Z[p, g, t, j] = e_nmj Q_ng F_mt
-        Z = np.einsum("nmj,png,pmt->pgtj", _EPS, Qs, Fs)
+        Z = np.einsum("nmj,png,pmt->pgtj", _EPS, Qs, Fs, optimize=True)
 
         s = np.einsum("pir,pkr->pki", Jsig, g)
         c = np.einsum("pir,pkr->pki", Jmu, g)
 
         Kpu = np.einsum("pkigt,pljgt->pkilj", A, qh)
-        Kpw = (np.einsum("pkigt,pgtj,pl->pkilj", A, Z, w)
-               + np.einsum("nij,pkn,pl->pkilj", _EPS, s, w))
-        Kmu = (np.einsum("pk,pgti,pljgt->pkilj", w, Z, A)
-               + np.einsum("pk,irj,plr->pkilj", w, _EPS, s))
+        Kpw = (np.einsum("pkigt,pgtj,pl->pkilj", A, Z, w, optimize=True)
+               + np.einsum("nij,pkn,pl->pkilj", _EPS, s, w, optimize=True))
+        Kmu = (np.einsum("pk,pgti,pljgt->pkilj", w, Z, A, optimize=True)
+               + np.einsum("pk,irj,plr->pkilj", w, _EPS, s, optimize=True))
         Kmw = (np.einsum("pk,pl,pigt,pgtj->pkilj", w, w,
-                         np.einsum("pabi,abgt->pigt", Z, D), Z)
+                         np.einsum("pabi,abgt->pigt", Z, D), Z, optimize=True)
                + np.einsum("pkigt,pljgt->pkilj", Ac, qh)
-               + np.einsum("nij,pkn,pl->pkilj", _EPS, c, w)
+               + np.einsum("nij,pkn,pl->pkilj", _EPS, c, w, optimize=True)
                # the e:sigma:e term: the only place a transposed Levi-Civita
                # index is invisible in the assembled matrix, since it is
                # antisymmetric in both slots
-               + np.einsum("pk,pl,imn,smj,psn->pkilj", w, w, _EPS, _EPS, Jsig))
+               + np.einsum("pk,pl,imn,smj,psn->pkilj", w, w, _EPS, _EPS, Jsig, optimize=True))
 
         block = np.zeros(Kpu.shape[:2] + (nc,) + Kpu.shape[3:4] + (nc,))
         block[:, :, :3, :, :3] = Kpu
@@ -584,9 +667,8 @@ class MicropolarMPMStepper:
         n_loc = dofs.shape[1]
         rows = np.repeat(dofs, n_loc, axis=1).ravel()
         cols = np.tile(dofs, (1, n_loc)).ravel()
-        return sparse.coo_matrix(
-            (block.reshape(-1), (rows, cols)),
-            shape=(self._n_dof, self._n_dof)).tocsr()
+        return coo_to_csr(rows, cols, block.reshape(-1),
+                          (self._n_dof, self._n_dof))
 
     # ------------------------------------------------------------------
     def _sensitivities(self, particles, c: dict, sl) -> dict:
@@ -613,7 +695,7 @@ class MicropolarMPMStepper:
         h = np.einsum("prb,pkr->pkb", F, g)          # Grad_X N, (n, k, 3)
 
         # dQ_mt/dw_j = e_mjc Q_ct  (Eq. B.6), carried onto node k by N_k
-        dQdw = np.einsum("mjc,pct,pk->pkjmt", _EPS, Q, w)
+        dQdw = np.einsum("mjc,pct,pk->pkjmt", _EPS, Q, w, optimize=True)
 
         if self.plasticity is None:
             return dict(
@@ -693,14 +775,36 @@ class MicropolarMPMStepper:
                 out[key][idx] = (
                     np.einsum("pybmt,pkjmt->pkjyb", blk[(r, "Q")], dQdw[idx])
                     + np.einsum("pybgq,pjg,pkq->pkjyb", blk[(r, "Gam_tr")],
-                                Q[idx], h[idx]))
+                                Q[idx], h[idx], optimize=True))
 
         out["h"], out["dQdw"] = h, dQdw
         return out
 
     # ------------------------------------------------------------------
     def _tangent_chunk_general(self, sl, c: dict, particles) -> sparse.csr_matrix:
-        """One chunk of the tangent, elastic or elastoplastic.
+        """One chunk of the tangent as its own CSR matrix.
+
+        The COO scatter a cached `BlockPattern` makes unnecessary. No path in
+        the library calls it any more -- the no-extension path goes through
+        the pattern too, so that the two backends cannot disagree -- and it is
+        kept as the reference the pattern is tested against, and for the test
+        comparing the elastic and general block builders.
+        """
+        block = self._tangent_blocks(sl, c, particles)
+        nc = self.n_components
+        dofs = (self._st.node_id[sl][:, :, None] * nc
+                + np.arange(nc)[None, None, :]).reshape(block.shape[0], -1)
+        n_loc = dofs.shape[1]
+        rows = np.repeat(dofs, n_loc, axis=1).ravel()
+        cols = np.tile(dofs, (1, n_loc)).ravel()
+        return coo_to_csr(rows, cols, block.reshape(-1),
+                          (self._n_dof, self._n_dof))
+
+    def _tangent_blocks(self, sl, c: dict, particles) -> np.ndarray:
+        """Per-particle tangent blocks for one chunk, elastic or elastoplastic.
+
+        Returned as ``(n, npe, nc, npe, nc)`` and already weighted by the
+        reference volume, which is the shape `BlockPattern.accumulate` takes.
 
         Derived directly from the internal force rather than transcribed from
         the reference's ``a1..a7``. Writing
@@ -730,8 +834,8 @@ class MicropolarMPMStepper:
         h, dQdw = d["h"], d["dQdw"]
 
         # how tau and nu respond to their own arguments
-        TU_D = np.einsum("pia,abyc,pjb->pijyc", Q, D, Fe)
-        NU = np.einsum("pia,abgd,pjb->pijgd", Q, Dc, F)
+        TU_D = np.einsum("pia,abyc,pjb->pijyc", Q, D, Fe, optimize=True)
+        NU = np.einsum("pia,abgd,pjb->pijgd", Q, Dc, F, optimize=True)
         if self.degradation is not None:
             # ``B`` and ``S`` were degraded in ``constitutive``, so only the
             # terms written in terms of D and Dc still carry the undegraded
@@ -742,30 +846,30 @@ class MicropolarMPMStepper:
                 :, None, None, None, None]
             TU_D = TU_D * gp
             NU = NU * gp
-        TU = TU_D + np.einsum("pia,pac,pjy->pijyc", Q, B, Q)
+        TU = TU_D + np.einsum("pia,pac,pjy->pijyc", Q, B, Q, optimize=True)
         QtT = np.einsum("pia,pij->paj", Q, tau)
         TQm = np.einsum("pij,pjb->pib", tau, Q)
         Qtn = np.einsum("pia,pij->paj", Q, nu)
         QS = np.einsum("pia,pab->pib", Q, S)
 
         # dtau / d(nodal), dnu / d(nodal); index order (p, L, j, i, r)
-        dtau_du = np.einsum("pirYC,pLjYC->pLjir", TU, d["dUe_du"])
-        dtau_dw = (np.einsum("pirYC,pLjYC->pLjir", TU, d["dUe_dw"])
-                   + np.einsum("im,pLjmt,ptr->pLjir", eye, dQdw, QtT)
-                   + np.einsum("rm,pLjmt,pit->pLjir", eye, dQdw, TQm))
-        dnu_du = (np.einsum("pirGD,pLjGD->pLjir", NU, d["dGe_du"])
-                  + np.einsum("rj,pit,pLt->pLjir", eye, QS, h))
-        dnu_dw = (np.einsum("pirGD,pLjGD->pLjir", NU, d["dGe_dw"])
-                  + np.einsum("im,pLjmt,ptr->pLjir", eye, dQdw, Qtn))
+        dtau_du = _contract_moduli(TU, d["dUe_du"])
+        dtau_dw = (_contract_moduli(TU, d["dUe_dw"])
+                   + np.einsum("im,pLjmt,ptr->pLjir", eye, dQdw, QtT, optimize=True)
+                   + np.einsum("rm,pLjmt,pit->pLjir", eye, dQdw, TQm, optimize=True))
+        dnu_du = (_contract_moduli(NU, d["dGe_du"])
+                  + np.einsum("rj,pit,pLt->pLjir", eye, QS, h, optimize=True))
+        dnu_dw = (_contract_moduli(NU, d["dGe_dw"])
+                  + np.einsum("im,pLjmt,ptr->pLjir", eye, dQdw, Qtn, optimize=True))
 
-        Kpu = (np.einsum("pLjir,pKr->pKiLj", dtau_du, g)
-               - np.einsum("pir,pKj,pLr->pKiLj", tau, g, g))
-        Kpw = np.einsum("pLjir,pKr->pKiLj", dtau_dw, g)
-        Kmu = (np.einsum("pLjir,pKr->pKiLj", dnu_du, g)
-               - np.einsum("pir,pKj,pLr->pKiLj", nu, g, g)
-               + np.einsum("pK,irn,pLjrn->pKiLj", w, _EPS, dtau_du))
-        Kmw = (np.einsum("pLjir,pKr->pKiLj", dnu_dw, g)
-               + np.einsum("pK,irn,pLjrn->pKiLj", w, _EPS, dtau_dw))
+        Kpu = (_contract_gradient(dtau_du, g)
+               - np.einsum("pir,pKj,pLr->pKiLj", tau, g, g, optimize=True))
+        Kpw = _contract_gradient(dtau_dw, g)
+        Kmu = (_contract_gradient(dnu_du, g)
+               - np.einsum("pir,pKj,pLr->pKiLj", nu, g, g, optimize=True)
+               + np.einsum("pK,irn,pLjrn->pKiLj", w, _EPS, dtau_du, optimize=True))
+        Kmw = (_contract_gradient(dnu_dw, g)
+               + np.einsum("pK,irn,pLjrn->pKiLj", w, _EPS, dtau_dw, optimize=True))
 
         block = np.zeros(Kpu.shape[:2] + (nc,) + Kpu.shape[3:4] + (nc,))
         block[:, :, :3, :, :3] = Kpu
@@ -773,15 +877,7 @@ class MicropolarMPMStepper:
         block[:, :, 3:, :, :3] = Kmu
         block[:, :, 3:, :, 3:] = Kmw
         block *= V[:, None, None, None, None]
-
-        dofs = (st.node_id[sl][:, :, None] * nc
-                + np.arange(nc)[None, None, :]).reshape(V.size, -1)
-        n_loc = dofs.shape[1]
-        rows = np.repeat(dofs, n_loc, axis=1).ravel()
-        cols = np.tile(dofs, (1, n_loc)).ravel()
-        return sparse.coo_matrix(
-            (block.reshape(-1), (rows, cols)),
-            shape=(self._n_dof, self._n_dof)).tocsr()
+        return block
 
     # ------------------------------------------------------------------
     # pure-function wrappers, for the finite-difference tangent check

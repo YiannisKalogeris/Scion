@@ -59,7 +59,7 @@ def main(tag=""):
         if short:
             truncated.append((TITLES[t], lam))
         a.set_title(rf"{TITLES[t]}" "\n"
-                    rf"$\lambda = {lam:.3f}$" + (" (stalled)" if short else ""),
+                    rf"$t = {lam:.3f}$" + (" (stalled)" if short else ""),
                     fontsize=9, color="crimson" if short else "black")
 
     fig.colorbar(s, ax=axes, shrink=0.7, label="$d$")

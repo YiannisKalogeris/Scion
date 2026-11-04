@@ -308,7 +308,7 @@ class ResidualBasis:
 
         worst_eq = max(self.equilibrium.residual(m) for m in self.modes)
         stack = np.stack(self.modes)
-        gram = np.einsum("p,ipj,kpj->ik", self._w, stack, stack) \
+        gram = np.einsum("p,ipj,kpj->ik", self._w, stack, stack, optimize=True) \
             / (self._volume * self.scale ** 2)
         gram_error = float(np.abs(gram - np.eye(self.n_modes)).max())
         return {

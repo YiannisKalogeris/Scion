@@ -486,7 +486,7 @@ class NeoHookeanDecoupled(Material):
 
         I2 = np.eye(2)
         geom = np.einsum('ik,LJ->iJkL', I2, S2)         # d_ik S_LJ
-        C4 = np.einsum('Mi,Nk,iJkL->MJNL', Finv, Finv, A2 - geom)  # dS/dE
+        C4 = np.einsum('Mi,Nk,iJkL->MJNL', Finv, Finv, A2 - geom, optimize=True)  # dS/dE
 
         vm = [(0, 0), (1, 1), (0, 1)]
         S_voigt = np.array([S2[0, 0], S2[1, 1], S2[0, 1]])

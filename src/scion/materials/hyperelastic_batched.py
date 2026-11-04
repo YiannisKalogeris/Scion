@@ -281,7 +281,7 @@ class TransverselyIsotropic(BatchedMaterial):
               * np.einsum("pkJ,piL->piJkL", G, G))
         A += self.lam * np.einsum("piJ,pkL->piJkL", G, G)
         # dP_f/dF: one term from dI_4/dF and one from d(Fa)/dF
-        A += 4.0 * self.k_fibre * np.einsum("pi,J,pk,L->piJkL", Fa, a, Fa, a)
+        A += 4.0 * self.k_fibre * np.einsum("pi,J,pk,L->piJkL", Fa, a, Fa, a, optimize=True)
         A += (2.0 * self.k_fibre * (I4 - 1.0)[:, None, None, None, None]
               * np.einsum("ik,JL->iJkL", eye, aa)[None])
         return P, J, A

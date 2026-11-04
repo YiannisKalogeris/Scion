@@ -37,7 +37,85 @@ from scion.solvers.bound_constrained import solve_bounded
 
 from .two_field import Field, TwoFieldProblem
 
-__all__ = ["PhaseFieldFractureProblem"]
+__all__ = ["PhaseFieldFractureProblem", "solve_phase_field_system",
+           "isolated_unknowns"]
+
+
+def isolated_unknowns(A) -> np.ndarray:
+    """Mask of unknowns appearing in one equation only, their own.
+
+    A row holding a single stored entry with a nonzero diagonal holds *the*
+    diagonal, so the first test identifies one equation in one unknown. The
+    second is not redundant: a row can hold only its diagonal while its
+    *column* still has entries, and splitting such an unknown off would leave
+    it in the free block as well. Neither test alone is safe -- ``nnz == 1``
+    without the diagonal check divides by a structural zero.
+
+    Read off the matrix rather than from the caller's unsupported-node set on
+    purpose: `PhaseFieldMPM.refresh` moves that set as the body deforms, and
+    a mask derived from the operator in hand cannot fall out of step with it.
+    """
+    A = A.tocsr()
+    lone = (np.diff(A.indptr) == 1) & (A.diagonal() != 0.0)
+    return lone & (np.bincount(A.indices, minlength=A.shape[0]) == 1)
+
+
+def solve_phase_field_system(K, R, solver=None):
+    """Solve the linearised phase-field system ``K delta = R``.
+
+    ``solver`` is ``None`` for SciPy's sparse direct solve, which is the
+    default and the path every published number here was produced with, or a
+    :class:`~scion.solvers.linear.LinearSolverBase`. The one to reach for is
+    ``KrylovSolver(method="pcg")``: this operator is
+    ``K_grad + mass(c alpha'' + g'' H)`` with both terms strictly positive, so
+    unlike the micropolar tangent it is scalar, SPD and diagonally dominant on
+    the scale of ``l``, and Jacobi-PCG converges in tens of iterations at any
+    mesh. **AMG is not the answer here** despite the operator being elliptic:
+    measured on a real torsion phase-field matrix its hierarchy stops
+    contracting exactly as on the 6-DOF tangent ("2552 unknowns from 2552"),
+    after 43 s of setup. IC(0) takes 20 iterations and loses on setup, at
+    Python speed. Jacobi wins by having no setup at all.
+
+    Why the direct solve has to go, measured on the torsion path with the
+    matrix lifted out of a real run:
+
+        a/dx   coupled dof   spsolve   Jacobi-PCG   iters    gain
+           6         2,755     0.073        0.004      46      19x
+           8         6,225     0.652        0.008      55      85x
+          12        19,129     8.053        0.033      63     248x
+
+    ``spsolve`` is ``N^2.46`` -- the 3-D fill wall already recorded for the
+    micropolar tangent, reached here through a 24-nonzeros-per-row operator
+    because MPM stencils overlap -- against ``N^1.17`` for PCG, whose
+    iteration count is governed by ``l/dx`` rather than by the specimen size.
+    So this is the rare lever whose value *grows* with resolution.
+
+    **Not bit-identical to the direct solve**, which is why it is opt-in. One
+    coupled load step of the notched micropolar plate at ``tol = 1e-10``: the
+    damage maximum, the history field and ``||F||`` all *exactly* equal,
+    ``d_sum`` 1.6e-14, the reaction 1.1e-12. The increment is what moves, and
+    the stagger loop re-converges it.
+
+    Structurally isolated unknowns -- a unit diagonal and nothing else in
+    their row *and* column, which is what `PhaseFieldMPM._laplacian` leaves on
+    a node with no particle support -- are solved directly and kept out of the
+    Krylov space. They are 74% of the rows at ``a/dx = 8``. They cost
+    `spsolve` nothing, since SuperLU eliminates them for free (1.800 s against
+    1.834 with them removed by hand), and double PCG's matvec for no change in
+    its iteration count.
+    """
+    if solver is None:
+        return spla.spsolve(K.tocsc(), R)
+    A = K.tocsr()
+    iso = isolated_unknowns(A)
+    if not iso.any():
+        return solver.solve(A, R)
+    delta = np.zeros(A.shape[0])
+    # one equation in one unknown, so this is exact rather than a tolerance
+    delta[iso] = R[iso] / A.diagonal()[iso]
+    free = np.flatnonzero(~iso)
+    delta[free] = solver.solve(A[free][:, free].tocsr(), R[free])
+    return delta
 
 
 def _solve_constrained(K, f, free, prescribed, values):
@@ -84,6 +162,10 @@ class PhaseFieldFractureProblem(TwoFieldProblem):
         self.model = model
         self.thickness = float(thickness)
         self.dim = domain.coordinates.shape[1]
+        #: Linear solver for the phase-field system. ``None`` is SciPy's
+        #: direct solve; see `solve_phase_field_system` for what to set it to
+        #: and what it costs in the last digits.
+        self.damage_solver = None
 
         n_nodes = domain.n_nodes
         self.u = Field("u", n_nodes, self.dim)
@@ -220,7 +302,7 @@ class PhaseFieldFractureProblem(TwoFieldProblem):
                 res = solve_bounded(K, R, lo=lo, hi=1.0 - d, x0=np.zeros_like(d))
                 delta = res.x
             else:
-                delta = spla.spsolve(K.tocsc(), R)
+                delta = solve_phase_field_system(K, R, self.damage_solver)
 
             d = d + delta
             if np.linalg.norm(delta) <= 1e-10 * max(1.0, np.linalg.norm(d)):

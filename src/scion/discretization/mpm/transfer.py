@@ -78,7 +78,7 @@ class APIC(Transfer):
         v_new = np.einsum("pk,pka->pa", st.w, vi)
         C_new = grid.basis.apic_inv_D(grid.dx) * np.einsum(
             "pk,pka,pkb->pab", st.w, vi, st.dpos
-        )
+        , optimize=True)
         grad_v = np.einsum("pka,pkb->pab", vi, st.grad_w)
 
         eye = np.eye(particles.dim, dtype=particles.dtype)
@@ -266,11 +266,11 @@ class PolyPIC(Transfer):
         # below means the same thing for every mode. Even in dx units the raw
         # monomials differ in norm by orders of magnitude.
         norm = np.sqrt(np.maximum(
-            np.einsum("pk,pkr,pkr->pr", st.w, S, S), 1.0e-300))
+            np.einsum("pk,pkr,pkr->pr", st.w, S, S, optimize=True), 1.0e-300))
         Sn = S / norm[:, None, :]
 
-        gram = np.einsum("pk,pkr,pks->prs", st.w, Sn, Sn)    # SPD, unit diag
-        rhs = np.einsum("pk,pkr,pka->pra", st.w, Sn, vi)
+        gram = np.einsum("pk,pkr,pks->prs", st.w, Sn, Sn, optimize=True)    # SPD, unit diag
+        rhs = np.einsum("pk,pkr,pka->pra", st.w, Sn, vi, optimize=True)
 
         # Truncated pseudo-inverse rather than a solve. At full degree the
         # monomial modes are close to linearly dependent -- measured condition
@@ -285,7 +285,7 @@ class PolyPIC(Transfer):
         inv = np.where(keep, 1.0 / np.where(keep, evals, 1.0), 0.0)
         self.effective_rank = float(keep.sum(axis=1).mean())
 
-        c = np.einsum("prs,ps,pqs,pqa->pra", evecs, inv, evecs, rhs)
+        c = np.einsum("prs,ps,pqs,pqa->pra", evecs, inv, evecs, rhs, optimize=True)
         c = c / norm[:, :, None]
 
         particles.poly_c = c

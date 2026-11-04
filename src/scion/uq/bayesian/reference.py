@@ -166,7 +166,7 @@ class ConjugateGaussian:
         cov = self.posterior_cov()
         centred = grid - self.posterior_mean()
         sign, logdet = np.linalg.slogdet(cov)
-        quad = np.einsum("ij,jk,ik->i", centred, np.linalg.inv(cov), centred)
+        quad = np.einsum("ij,jk,ik->i", centred, np.linalg.inv(cov), centred, optimize=True)
         return np.exp(-0.5 * (quad + logdet + self.dim * np.log(2.0 * np.pi)))
 
     # -- the samplers' view ----------------------------------------------

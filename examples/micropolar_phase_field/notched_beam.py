@@ -185,7 +185,7 @@ def make_figures(rows, tag=""):
                       cmap="inferno", vmin=0.0, vmax=1.0)
         a.set_aspect("equal"); a.set_xticks([]); a.set_yticks([])
         a.set_title(rf"$\ell_b/h = {r['l_b_over_h']:g}$", fontsize=9)
-    fig.suptitle(rf"damage at a common load level $\lambda = {lam_c:.3f}$",
+    fig.suptitle(rf"damage at a common load level $t = {lam_c:.3f}$",
                  fontsize=9, y=1.03)
     fig.colorbar(s, ax=axes[0], shrink=0.85, label="$d$")
     p = RESULTS / f"beam_damage{tag}.png"
@@ -224,7 +224,7 @@ def make_figures(rows, tag=""):
         s = a.scatter(r["x"][:, 0], r["x"][:, 1], c=r["fields"][k], s=3,
                       cmap="inferno", vmin=0.0, vmax=1.0)
         a.set_aspect("equal"); a.set_xticks([]); a.set_yticks([])
-        a.set_title(rf"$\lambda = {r['disp'][k]:.3f}$, "
+        a.set_title(rf"$t = {r['disp'][k]:.3f}$, "
                     rf"$F = {abs(r['load'][k]):.3g}$", fontsize=8)
     fig.suptitle(rf"crack evolution at $\ell_b/h = {r['l_b_over_h']:g}$",
                  fontsize=9, y=1.06)
