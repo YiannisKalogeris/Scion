@@ -29,7 +29,9 @@ from scion.shakedown import (
     elastic_factor,
     rsdm,
 )
-from scion.shakedown.rsdm import _effective
+from scion.materials.plasticity.hardening import PerfectPlasticity
+from scion.materials.plasticity.return_mapping import PlasticState, return_map
+from scion.shakedown.rsdm import RSDMResult, _deviator, _effective
 
 from .cylinder import C_MANDEL, LIMIT_PRESSURE, YIELD, build_cylinder
 
@@ -104,6 +106,201 @@ def test_the_state_is_judged_relative_to_the_yield_stress():
 
     result.scale = 1e-12                       # pretend the yield stress is tiny
     assert result.state != "shakedown"
+
+
+# ---------------------------------------------------------------------------
+# Above the shakedown limit there is no fixed point at all
+# ---------------------------------------------------------------------------
+
+def _constant_at(gamma, n_iter, n=5, n_time=8):
+    """``|a_0/2|_inf`` after exactly ``n_iter`` iterations from cold.
+
+    ``tol=0`` disables the convergence break, so the run is the first
+    ``n_iter`` terms of the sequence and two budgets are directly comparable.
+    """
+    tables, equilibrium, history, _ = _setup(n, n_time)
+    result = rsdm(gamma * history, tables, equilibrium.free, C_MANDEL, YIELD,
+                  max_iter=n_iter, tol=0.0)
+    return float(np.abs(result.constant_residual).max())
+
+
+def test_below_the_limit_the_constant_term_settles():
+    """The fixed point exists there, so doubling the budget changes nothing.
+
+    400 and not 200: the sequence is still arriving at 200, where doubling
+    moves it 1.1e-6. From 400 the relative move is 1.5e-12, which is the
+    settled regime this test is about.
+    """
+    short = _constant_at(0.70 * LIMIT_PRESSURE, 400)
+    long = _constant_at(0.70 * LIMIT_PRESSURE, 800)
+
+    assert abs(long - short) < 1e-9 * short
+
+
+def test_above_the_limit_the_constant_term_DRIFTS_without_bound():
+    """Which is why RSDM-S is absent, and why the fix is not acceleration.
+
+    The Fourier series presupposes a periodic asymptotic state and ratchetting
+    is not periodic, so there is nothing for the iteration to converge to. The
+    sharp form of the statement: the constant term passes the yield stress,
+    which no admissible residual field can do, and keeps going.
+    """
+    short = _constant_at(1.20 * LIMIT_PRESSURE, 400)
+    long = _constant_at(1.20 * LIMIT_PRESSURE, 800)
+
+    assert long > 1.2 * short                 # ~1.33x per doubling, measured
+    assert long > YIELD                       # 2.03 Y at 800, 3.69 Y at 3200
+
+
+def test_the_growth_ratio_separates_the_two_where_state_cannot():
+    """``state`` needs ~1600 iterations to stop reporting failure on a
+    structure that shakes down; the growth ratio needs none, because it asks
+    whether the sequence is going anywhere rather than where it got to."""
+    def growth(ratio, n):
+        return (_constant_at(ratio * LIMIT_PRESSURE, 2 * n)
+                / _constant_at(ratio * LIMIT_PRESSURE, n))
+
+    assert growth(0.70, 400) == pytest.approx(1.0, abs=1e-9)
+    assert growth(1.20, 200) > 1.05
+
+
+# ---------------------------------------------------------------------------
+# Plastic strain accumulation and the asymptotic-cycle indicators
+# ---------------------------------------------------------------------------
+
+def _reversed_program(n_time=8):
+    """A fully reversed history, ``alpha(tau + 1/2) = -alpha(tau)``.
+
+    The proportional hump never changes sign, so it cannot produce alternating
+    plasticity. This one can, and its antisymmetry is what makes the net
+    plastic strain vanish exactly rather than approximately.
+    """
+    tau = np.linspace(0.0, 1.0, n_time, endpoint=False)
+    return CyclicProgram(np.sin(2.0 * np.pi * tau)[:, None], tau)
+
+
+def _run_reversed(multiple, n=5, n_time=8, max_iter=3000):
+    tables, equilibrium, envelope = build_cylinder(n, n)
+    p_e = elastic_factor(envelope.vertex_stresses(LoadDomain.fixed(1.0)),
+                         VonMises(), YIELD)
+    history = _reversed_program(n_time).elastic_history(envelope)
+    return rsdm(multiple * p_e * history, tables, equilibrium.free, C_MANDEL,
+                YIELD, max_iter=max_iter, tol=1e-11)
+
+
+def test_the_plastic_strain_rate_is_the_closest_point_projection():
+    """The identity the whole accumulation rests on, and the reason no return
+    map had to be added.
+
+    The formulation writes the plastic strain rate from the closest-point
+    projection of the stress onto the admissible set. For von Mises that
+    projection keeps the hydrostatic part and scales the deviator by
+    ``sigma_Y/sigma_eq``, so the difference is exactly the radial excess RSDM
+    already computes. Checked against the library's own return map, which is
+    independently validated against the thick cylinder.
+    """
+    rng = np.random.default_rng(0)
+    sigma = rng.normal(0.0, 400.0, (400, 6))          # Mandel, mostly yielding
+    effective = _effective(sigma)
+    excess = effective > YIELD
+    assert excess.sum() > 300                         # the test must bite
+
+    scale = np.where(excess, 1.0 - YIELD / np.maximum(effective, 1e-300), 0.0)
+    radial = scale[:, None] * _deviator(sigma)
+
+    mapped = return_map(np.linalg.solve(C_MANDEL, sigma.T).T,
+                        PlasticState.zeros(len(sigma)), VonMises(),
+                        PerfectPlasticity(YIELD), C_MANDEL)
+
+    assert np.array_equal(mapped.plastic, excess)
+    reference = mapped.state.eps_p
+    assert np.abs(np.linalg.solve(C_MANDEL, radial.T).T - reference).max() \
+        < 1e-14 * np.abs(reference).max()
+
+
+def test_the_plastic_strain_is_exactly_incompressible():
+    """``tr(eps^p) = 0`` to round-off, not to a tolerance: the radial excess is
+    a deviator and the compliance of an isotropic material maps deviators to
+    deviators. A nonzero trace is a bug, which is what makes this sharp."""
+    result = _run_reversed(1.6)
+    trace = np.abs(result.plastic_strain[..., :3].sum(axis=-1)).max()
+
+    assert trace < 1e-14 * np.abs(result.plastic_strain).max()
+
+
+def test_shakedown_carries_no_plastic_strain_in_the_cycle():
+    """All three indicators vanish together, which is the definition."""
+    result, *_ = _run(1.2)
+    assert result.state == "shakedown"
+
+    assert result.cyclic_amplitude < 1e-8
+    assert result.ratchet_rate < 1e-8 * result.plastic_strain_scale
+    assert result.plastic_strain_range < 1e-8 * result.plastic_strain_scale
+
+
+def test_a_fully_reversed_history_has_NO_net_plastic_strain():
+    """Alternating plasticity, and the distinction from ratchetting is exact
+    rather than thresholded.
+
+    With ``sigma^E(tau + 1/2) = -sigma^E(tau)`` the mean residual stress
+    vanishes by symmetry, so the total stress is antisymmetric too, so the
+    radial excess is -- and it sums to zero over the cycle. Measured 3.0e-13
+    of the shear yield strain against a plastic strain range of 0.088, i.e.
+    eleven orders of magnitude of separation, where `state` has to guess with
+    a `1e-3 * peak` threshold.
+
+    Also pins the two indicators against each other: ``r`` must be the norm
+    of the last entry of the accumulated history, or the ``dt`` in one of them
+    does not match the other.
+    """
+    result = _run_reversed(1.6)
+
+    assert result.cyclic_amplitude > 1.0                    # genuinely cycling
+    assert result.plastic_strain_range > 0.05 * result.plastic_strain_scale
+    assert result.ratchet_rate < 1e-9 * result.plastic_strain_scale
+    assert result.regime() == "alternating"
+
+    net = np.linalg.norm(result.plastic_strain[-1], axis=-1).max()
+    assert result.ratchet_rate == pytest.approx(net, rel=1e-12)
+
+
+def test_the_plastic_strain_range_grows_with_the_load():
+    """And is zero below first yield. Monotone, because a larger reversed
+    amplitude puts more of the cycle outside the yield surface."""
+    ranges = [_run_reversed(m).plastic_strain_range / YIELD
+              for m in (0.8, 1.2, 1.6)]
+
+    assert ranges[0] == 0.0
+    assert ranges[1] < ranges[2]
+
+
+def test_the_amplitude_is_volume_weighted_where_phi_is_not():
+    """``A`` integrates over the body; ``phi`` counts quadrature points. On a
+    graded mesh they are different numbers, and only the first is a property
+    of the structure rather than of the discretisation."""
+    a = np.array([[[1.0, 0, 0, 0, 0, 0], [1.0, 0, 0, 0, 0, 0]]])
+    b = np.zeros_like(a)
+    weights = np.array([1.0, 3.0])                  # one point four times wider
+    result = RSDMResult(a0=np.zeros((2, 6)), a=a, b=b,
+                        residual=np.zeros((1, 2, 6)),
+                        plastic_stress=np.zeros((1, 2, 6)),
+                        compliance=np.linalg.inv(C_MANDEL),
+                        weights=weights, sigma_0=2.0)
+
+    assert result.cyclic_amplitude == pytest.approx(np.sqrt(4.0) / 2.0)
+
+
+def test_the_regime_separates_elastic_from_shakedown():
+    """Both carry zero plastic strain in the asymptotic cycle, so the
+    indicators alone cannot tell them apart; the residual stress field can,
+    because an elastic history never builds one."""
+    elastic = _run_reversed(0.8)
+    assert elastic.regime() == "elastic"
+    assert np.abs(elastic.constant_residual).max() == 0.0
+
+    redistributed, *_ = _run(1.2)
+    assert redistributed.regime() == "shakedown"
+    assert np.abs(redistributed.constant_residual).max() > 0.0
 
 
 # ---------------------------------------------------------------------------

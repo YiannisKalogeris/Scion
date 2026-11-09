@@ -451,3 +451,136 @@ def test_the_stable_step_accounts_for_diffusion_as_well_as_advection():
     advective_only = 0.4 * 1e-4 / 1.0
     assert fine.stable_dt() == pytest.approx(0.4 / (1e4 + 2e5))
     assert fine.stable_dt() < 0.05 * advective_only
+
+
+class TestPerCallVelocity:
+    """The per-call ``velocity`` override.
+
+    It exists for the probability density evolution method, whose GDEE advects
+    a density at a speed that changes every step, and the claims that make it
+    safe to use that way are: it reproduces a constructor-set velocity *to the
+    bit* rather than approximately, ``None`` changes nothing, and conservation
+    survives a velocity that varies step to step -- which is conservation of
+    probability once the transported field is a PDF.
+    """
+
+    @staticmethod
+    def _bump(assembler, centre=0.5, width=0.08):
+        x = assembler.centres(0)
+        u = np.exp(-0.5 * ((x - centre) / width) ** 2)
+        return u / (u.sum() * assembler.h[0])          # integrates to one
+
+    def test_the_override_is_bit_identical_to_the_constructor(self):
+        kw = dict(grid_shape=(60,), spacing=1.0 / 60, flux="upwind",
+                  limiter="superbee")
+        a = FVMAssembler(velocity=1.0, **kw)
+        b = FVMAssembler(velocity=-0.7, **kw)
+        u = self._bump(a)
+        cond = a.default_conditions()
+
+        assert np.array_equal(a.divergence(u, cond, velocity=-0.7),
+                              b.divergence(u, cond))
+        assert np.array_equal(a.advance(u, 1e-3, cond, 2, -0.7),
+                              b.advance(u, 1e-3, cond, 2))
+        assert a.stable_dt(0.4, -0.7) == b.stable_dt(0.4)
+
+    def test_none_is_a_no_op(self):
+        a = FVMAssembler(grid_shape=(40,), spacing=0.025, velocity=1.3)
+        u = self._bump(a)
+        cond = a.default_conditions()
+        assert np.array_equal(a.divergence(u, cond, None),
+                              a.divergence(u, cond))
+
+    def test_it_actually_reaches_the_scheme(self):
+        """A guard against an argument that is accepted and discarded -- the
+        failure mode that would make every other test here pass."""
+        a = FVMAssembler(grid_shape=(40,), spacing=0.025, velocity=1.0)
+        u = self._bump(a)
+        cond = a.default_conditions()
+        assert not np.allclose(a.divergence(u, cond, velocity=-1.0),
+                               a.divergence(u, cond))
+
+    def test_a_sign_change_transports_the_bump_back(self):
+        a = FVMAssembler(grid_shape=(200,), spacing=1.0 / 200, velocity=0.0,
+                         flux="upwind", limiter="superbee")
+        cond = a.default_conditions()
+        u0 = self._bump(a, centre=0.5)
+        dt, speed = 1.0 / 200 * 0.2, 0.5
+
+        u = u0.copy()
+        for _ in range(100):                      # out
+            u = a.advance(u, dt, cond, 2, +speed)
+        moved = float((a.centres(0) * u).sum() * a.h[0])
+        for _ in range(100):                      # and back
+            u = a.advance(u, dt, cond, 2, -speed)
+        returned = float((a.centres(0) * u).sum() * a.h[0])
+
+        assert moved > 0.5 + 0.5 * speed * 100 * dt * 0.8
+        assert abs(returned - 0.5) < 2e-3
+
+    def test_conservation_survives_a_velocity_that_changes_every_step(self):
+        """The property PDEM needs: ``sum p dx`` is unchanged by transport.
+
+        Conservation here is structural, so this is a round-off check and a
+        drift above 1e-14 would be a bookkeeping bug rather than inaccuracy.
+        """
+        a = FVMAssembler(grid_shape=(200,), spacing=1.0 / 200, velocity=0.0,
+                         flux="upwind", limiter="superbee")
+        cond = a.default_conditions()
+        # narrow enough that the tails are at 1e-18 by the end: see the next
+        # test for what a bump touching the boundary does
+        u = self._bump(a, centre=0.5, width=0.04)
+        start = a.total(u)
+
+        rng = np.random.default_rng(0)
+        for _ in range(150):
+            speed = float(rng.uniform(-0.6, 0.6))
+            u = a.advance(u, a.stable_dt(0.3, speed), cond, 2, speed)
+
+        # the claim is only meaningful if nothing left through the boundary,
+        # so check that before the conservation figure -- the wide-bump case
+        # below is what happens when it does
+        assert max(abs(u[0]), abs(u[-1])) < 1e-15
+        assert abs(a.total(u) - start) < 1e-14
+        assert u.min() > -1e-14          # a density may not go negative
+
+    def test_probability_leaves_if_the_grid_does_not_contain_the_support(self):
+        """The trap PDEM will meet: conservation is only conservation *inside*
+        the grid.
+
+        The same run with a bump wide enough to reach the ends loses 2.4e-10
+        of its mass through the outflow condition -- small, one-signed, and
+        invisible unless looked for, which is the dangerous combination for a
+        quantity that is supposed to be a probability.
+        """
+        a = FVMAssembler(grid_shape=(200,), spacing=1.0 / 200, velocity=0.0,
+                         flux="upwind", limiter="superbee")
+        cond = a.default_conditions()
+        u = self._bump(a, centre=0.5, width=0.08)
+        start = a.total(u)
+
+        rng = np.random.default_rng(0)
+        for _ in range(150):
+            speed = float(rng.uniform(-0.6, 0.6))
+            u = a.advance(u, a.stable_dt(0.3, speed), cond, 2, speed)
+
+        assert max(abs(u[0]), abs(u[-1])) > 1e-9      # the tail is at the edge
+        assert start - a.total(u) > 1e-12             # and it only ever loses
+
+    def test_stable_dt_follows_the_override(self):
+        a = FVMAssembler(grid_shape=(50,), spacing=0.02, velocity=1.0)
+        assert a.stable_dt(0.4, 2.0) == pytest.approx(0.5 * a.stable_dt(0.4))
+        assert a.stable_dt(0.4, 0.0) == float("inf")
+
+    def test_a_two_dimensional_override_takes_one_component_per_direction(self):
+        a = FVMAssembler(grid_shape=(12, 12), spacing=0.1, velocity=(1.0, 0.0))
+        b = FVMAssembler(grid_shape=(12, 12), spacing=0.1, velocity=(0.3, -0.4))
+        u = np.zeros((12, 12))
+        u[6, 6] = 1.0
+        cond = a.default_conditions()
+        assert np.array_equal(a.divergence(u, cond, velocity=(0.3, -0.4)),
+                              b.divergence(u, cond))
+        # a scalar broadcasts to every direction
+        c = FVMAssembler(grid_shape=(12, 12), spacing=0.1, velocity=(0.5, 0.5))
+        assert np.array_equal(a.divergence(u, cond, velocity=0.5),
+                              c.divergence(u, cond))

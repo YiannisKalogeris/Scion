@@ -1,17 +1,26 @@
 """
 Uncertainty quantification.
 
-Two directions, and they are different problems rather than two settings of one.
+Three questions, and they are different problems rather than three settings of
+one.
 
 **Forward** -- push a distribution over inputs through the model and describe
-the distribution that comes out. Sampling and surrogates: ``sampling``, ``pce``,
-``gp``.
+the distribution that comes out, as moments, sensitivity indices or a failure
+probability. Sampling and surrogates: ``sampling``, ``pce``, ``gp``.
 
 **Inverse** -- start from measurements and recover the distribution over inputs
 that could have produced them. Bayesian inference: ``bayesian``.
 
+**Density** -- the whole PDF of a response and, for a dynamic problem, its
+evolution in time, rather than a statistic of it. ``density``, holding the
+probability density evolution method. It is separate from ``forward`` because
+the output is a function rather than a number, and because it needs the model
+to supply a response *velocity* and not only a response.
+
 Submodules
 ----------
+density     representative point sets and the probability density evolution
+            method (Li & Chen)
 forward     input distributions, sampling designs, variance reduction,
             reliability (FORM, importance sampling, subset simulation) and
             Sobol sensitivity indices
@@ -43,6 +52,17 @@ from scion.uq.bayesian import (
     effective_sample_size,
     get_sampler,
     r_hat,
+)
+from scion.uq.density import (
+    DensityEvolution,
+    ProbabilityNotConserved,
+    RepresentativePoints,
+    band_probability,
+    exceedance_probability,
+    lattice,
+    response_histories,
+    solve_dpim,
+    solve_gdee,
 )
 from scion.uq.forward import (
     Ishigami,
@@ -110,4 +130,14 @@ __all__ = [
     "get_sampler",
     "effective_sample_size",
     "r_hat",
+    # density
+    "RepresentativePoints",
+    "lattice",
+    "solve_gdee",
+    "solve_dpim",
+    "exceedance_probability",
+    "band_probability",
+    "response_histories",
+    "DensityEvolution",
+    "ProbabilityNotConserved",
 ]

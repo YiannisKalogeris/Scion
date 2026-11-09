@@ -71,7 +71,7 @@ F_SOURCE = 10.0
 
 # Number of training shapes to test on
 N_TEST_SHAPES = 5
-SEED = 42
+SEED = 32
 
 # ── Article comparison (ground-truth) settings ──
 HIFI_TARGET_ELEMS = 40000     # high-fidelity reference solve ("ground truth")
@@ -80,9 +80,6 @@ RELATIVE_L2       = True       # report ||e||_L2 / ||u_ref||_L2 (False => absolu
 #ERROR_CLIM = (0.0, 0.025) # only if i want my plots to be in a common range (otherwise auto-scaled)
 
 # ── Mapping source ──
-# Encoder is the primary path; if its checkpoint is absent we fall back to the stored
-# Stage-1 codes (perfect-z testing). Rename encoder_best.pt (e.g. -> encoder_best_REMOVE.pt)
-# to force the stored-code path, exactly as in Main_nsf.py.
 ENCODER_CKPT = "encoder_best_REMOVE.pt"
 SDF_GRID     = 64              # encoder SDF image resolution (must match training)
 SDF_BOUNDS   = (-2.5, 2.5)     # encoder SDF bounding box   (must match training)

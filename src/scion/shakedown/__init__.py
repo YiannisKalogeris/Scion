@@ -73,7 +73,12 @@ from .elastic import ElasticEnvelope, solve_elastic
 from .equilibrium import SelfEquilibrium
 from .lmm import LMMResult, linear_matching
 from .load_domain import LoadDomain
+from .bree import (BREE_CORNER, TransitionLoads, cyclic_strip,
+                   elastic_boundary, plastic_strain_range_exact,
+                   ratchet_rate_exact, regime, rsdm_strip,
+                   shakedown_boundary, strip_quadrature, transition_loads)
 from .rsdm import CyclicProgram, RSDMResult, rsdm
+from .cyclic import CyclicState, cyclic_steady_state
 from .melan import MelanResult, elastic_factor, melan_lower_bound
 
 __all__ = [
@@ -92,5 +97,20 @@ __all__ = [
     "CyclicProgram",
     "rsdm",
     "RSDMResult",
+    # the Bree problem, closed form
+    "BREE_CORNER",
+    "TransitionLoads",
+    "transition_loads",
+    "regime",
+    "elastic_boundary",
+    "shakedown_boundary",
+    "rsdm_strip",
+    "strip_quadrature",
+    "plastic_strain_range_exact",
+    "ratchet_rate_exact",
     "elastic_factor",
+    # the same cycle with yield enforced exactly
+    "cyclic_steady_state",
+    "CyclicState",
+    "cyclic_strip",
 ]

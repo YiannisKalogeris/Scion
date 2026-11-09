@@ -41,18 +41,60 @@ the start and the end of the cycle (Eq. 15) to give
 Three coefficients -- ``a_0``, ``a_1``, ``b_1`` -- are enough in practice, which
 is what makes the method cheap.
 
-Plasticity without a return map
--------------------------------
-A closest-point projection would return the stress along ``-D eps_dot^pl``.
-RSDM uses instead the *radial* excess: the part of the total stress sticking out
+Plasticity without a local Newton solve
+---------------------------------------
+RSDM works with the *radial* excess: the part of the total stress sticking out
 of the yield surface along its own direction,
 
     sigma_p = s (1 - sigma_Y / sigma_eff)   when   sigma_eff > sigma_Y
 
-which the paper calls the plastic stress vector and treats as an equivalent
-measure of the plastic strain rate -- both are zero together, and both point the
-same way. It costs one division instead of a local Newton solve, and it is what
-lets the whole method run on an existing elastic code.
+which the paper calls the plastic stress vector. It costs one division instead
+of a local Newton solve, and it is what lets the whole method run on an
+existing elastic code.
+
+**For von Mises this is not an approximation of the closest-point projection,
+it IS the closest-point projection** -- an earlier note here calling it "an
+equivalent measure of the plastic strain rate" undersold it. Projecting onto
+the yield surface in the complementary-energy norm leaves the hydrostatic part
+alone, because the criterion does not constrain it, and the metric restricted
+to the deviatoric subspace is ``1/(2 mu)`` times the identity, so the
+projection of the deviator is radial. Hence
+
+    sigma - PI_K(sigma) = s - s sigma_Y/sigma_eff = sigma_p
+
+exactly, and the plastic strain increment of a backward-Euler return map is
+``D^-1 sigma_p``. Verified against
+:func:`~scion.materials.plasticity.return_map` on 399 yielding states spanning
+``sigma_eff/sigma_Y`` up to 8.1: agreement to **7.2e-16** relative, with the
+yielding sets identical. The two routes differ for a criterion whose surface is
+not a sphere in the energy metric -- Drucker-Prager, where the projection is
+not radial and the apex needs its own branch -- which is why the statement is
+specific to von Mises.
+
+Plastic strain, and what it is for
+----------------------------------
+That identity is what makes the plastic strain recoverable without touching the
+iteration. :attr:`RSDMResult.plastic_strain` is the running sum of
+``D^-1 sigma_p`` over the cycle, and three indicators are built on it:
+:attr:`~RSDMResult.cyclic_amplitude` (the volume-weighted amplitude of the
+cyclic residual stress), :attr:`~RSDMResult.plastic_strain_range` and
+:attr:`~RSDMResult.ratchet_rate` (the net plastic strain per cycle).
+
+**They are indicators and not magnitudes, and that is a property of the rate
+convention rather than of the accumulation.** Driving the residual stress with
+``sigma_p`` itself makes the rate scale a free penalty parameter, so the
+converged state above shakedown is proportional to it -- on the Bree strip
+``plastic_strain_range`` returns 0.084261 where the closed form gives exactly
+1.0. The *regime* boundaries are untouched, because ``sigma_p = 0`` is scale
+free, which is why these are sound as indicators and why the shakedown limit
+comes out to 0.02%. For the magnitude use
+:func:`~scion.shakedown.cyclic_steady_state`, which enforces yield instead of
+penalising its violation and reproduces that 1.0 to 9.3e-16. :meth:`~RSDMResult.regime` classifies on them, and unlike
+:attr:`~RSDMResult.state` it separates the elastic regime from shakedown and
+needs no ``1e-3 * peak`` heuristic -- on a fully reversed history the net
+plastic strain comes out at **3.0e-13** of the shear yield strain against a
+range of 0.088, so alternating plasticity and ratchetting are eleven orders
+apart rather than thresholded.
 
 The linear solve
 ----------------
@@ -78,16 +120,63 @@ until the trigonometric content vanishes, and an implementation of it converged
 reliably to the wrong answer -- ``2 p_e``, the alternating-plasticity limit,
 where the thick cylinder's published value is ``0.8 sigma_Y``, the
 collapse-governed one (Spiliopoulos and Panagiotou 2014, Fig. 10, at
-``R_2/R_1 = 0.5``). The cause is here rather than in the descent: above
-shakedown this fixed point converges too slowly to be read. At a load between
-the two limits it was still moving after four thousand iterations, and warm
-starting from a higher factor -- which the method requires -- suppressed the
-measured plastic stress sixfold at the same load and budget. The descent is
-driven by those numbers, so its step decayed geometrically and the sequence
-asymptoted onto the alternating limit.
+``R_2/R_1 = 0.5``). The cause is here rather than in the descent, and it is
+not slow convergence: **above the shakedown limit this fixed point does not
+exist.** The Fourier series presupposes a periodic asymptotic state, and
+ratchetting is not periodic, so what the iteration does above ``lambda_sd`` is
+drift. Measured on the thick cylinder, ``|a_0/2|_inf`` over the yield stress
+against the iteration count:
 
-Accelerating the fixed point is the thing to fix; the outer loop was not the
-problem. Until then, use :mod:`~scion.shakedown.lmm` for an upper bound and
+    iterations         100     200     400     800    1600    3200
+    0.90 p_lim      0.5572  0.5710  0.5725  0.5725  0.5725  0.5725
+    1.00 p_lim      0.7435  0.7878  0.8096  0.8129  0.8130  0.8130
+    1.04 p_lim      0.8078  0.8589  0.9077  0.9848  1.0960  1.2260
+    1.20 p_lim      1.0200  1.2170  1.5410  2.0290  2.7800  3.6940
+
+Below the limit it settles and the cycle-mean plastic stress falls to round-off
+(5.8e-17 of the yield stress at 0.90). Above it the constant term grows by a
+steady ~1.33x per doubling of the iteration count and passes **3.7 times the
+yield stress**, which no admissible residual field can be. So there is nothing
+to accelerate onto -- an earlier note here proposing acceleration as the fix is
+retracted -- and the descent read a number that was still growing, which is why
+its step decayed onto the wrong limit.
+
+What that drift is good for
+---------------------------
+It is a cleaner indicator than :attr:`RSDMResult.state`, which is unreliable at
+any budget short of convergence and errs towards reporting failure: at 500
+iterations it calls the 0.90 p_lim case ratchetting, and it needs ~1600 to stop
+doing so. The growth ratio does not need convergence at all. With
+``g = |a_0/2|_inf(2N) / |a_0/2|_inf(N)`` at ``N = 1600``, 5x5 mesh:
+
+    lam/p_lim   0.70     0.95     1.00     1.005    1.010    1.020    1.20
+    g          1.00000  1.00000  1.00000  1.00001  1.00001  1.03344  1.32875
+
+A sharp transition in (1.010, 1.020): 1.00001 to 1.03344 across one grid
+interval, with nothing below 1.010 departing from unity in the fifth decimal.
+
+**An earlier entry here claimed agreement to 0.08% with a Koiter bound of
+1.0108 from :mod:`~scion.shakedown.lmm` on the same full-integration mesh, and
+that is RETRACTED: the figure does not reproduce.** LMM requires b-bar -- its
+matched material is exactly incompressible -- and on fully integrated tables it
+returns ``nan`` without converging at every ``strain_floor`` from 1e-9 to 1e-3
+and every ``penalty`` from 1e2 to 1e4, with an exactly singular matrix. On
+b-bar tables it gives 1.00730 p_lim for this mesh, 1.00501 at 6x6 and 1.00113
+at 12x12 -- converging from above, as an upper bound should -- and 1.0108
+matches none of them. So there is no like-for-like bound for this table, since
+RSDM must *not* have b-bar; the fully integrated transition sitting above the
+b-bar bound is what locking predicts, and that comparison is indicative only.
+
+The sharp cross-check lives at a fixed discretisation instead:
+:func:`~scion.shakedown.cyclic_steady_state` on b-bar tables stops
+equilibrating at **1.00747 p_lim against that same 1.00730** -- 0.02%, between
+a kinematic bounding method and an incremental elastoplastic analysis.
+
+The iteration count is set by the load level, not the mesh: 593 / 619 / 575 /
+578 iterations to a relative change of 1e-8 at 0.90 p_lim over 100 / 256 / 576
+/ 1024 quadrature points, at 2.8 / 4.8 / 8.6 / 13.9 ms an iteration.
+
+Until RSDM-S exists, use :mod:`~scion.shakedown.lmm` for an upper bound and
 :mod:`~scion.shakedown.equilibrium_elements` for a lower one -- both are
 verified against the same benchmark and bracket it.
 """
@@ -117,6 +206,35 @@ def _deviator(a: np.ndarray) -> np.ndarray:
 def _effective(a: np.ndarray) -> np.ndarray:
     s = _deviator(a)
     return np.sqrt(1.5 * np.einsum("...i,...i->...", s, s))
+
+
+def _frobenius(a: np.ndarray) -> np.ndarray:
+    """Euclidean norm over the component axis of a Mandel array.
+
+    In Mandel this *is* the tensor norm ``sqrt(a:a)``, because the three shear
+    slots carry ``sqrt(2)``. In Voigt it is not, and would under-weight the
+    shears by that factor. Worth stating because the indicator definitions say
+    only "the Euclidean norm of the components at one Gauss point", which is
+    unambiguous only once the notation is fixed.
+    """
+    return np.linalg.norm(a, axis=-1)
+
+
+def _strain_range(eps_p: np.ndarray) -> float:
+    r"""``max_g max_{i,j} || eps^p_g(t_i) - eps^p_g(t_j) ||`` over a cycle.
+
+    Shared with :mod:`~scion.shakedown.cyclic` so the two methods report the
+    same quantity from the same code and a difference between them is a
+    difference of state rather than of definition.
+
+    ``n_t`` passes over the history rather than the full
+    ``(n_points, n_t, n_t)`` Gram array, which reaches 327 MB at 10,000 points
+    and 64 cycle samples.
+    """
+    worst = 0.0
+    for i in range(eps_p.shape[0]):
+        worst = max(worst, float(_frobenius(eps_p - eps_p[i]).max()))
+    return worst
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +326,9 @@ class RSDMResult:
     converged: bool = False
     phi: float = 0.0                            # trigonometric content
     scale: float = 1.0                          # yield stress, for thresholds
+    compliance: np.ndarray | None = field(default=None, repr=False)
+    weights: np.ndarray | None = field(default=None, repr=False)
+    sigma_0: float = 0.0                        # reference stress for ``A``
 
     @property
     def constant_residual(self) -> np.ndarray:
@@ -228,6 +349,192 @@ class RSDMResult:
         return float(np.max(np.linalg.norm(
             self.plastic_stress.reshape(self.plastic_stress.shape[0], -1),
             axis=1)))
+
+    # -- plastic strain, and the three asymptotic-cycle indicators --------
+
+    def _require(self, what: str) -> None:
+        if self.compliance is None:
+            raise ValueError(
+                f"{what} needs the elastic compliance, which `rsdm` stores on "
+                f"the result. This object was built by hand without it.")
+
+    @property
+    def plastic_strain_rate(self) -> np.ndarray:
+        r"""``(n_time, n_points, 6)`` Mandel plastic strain rate over the cycle.
+
+        The backward-Euler return map written as a projection,
+
+            eps_dot^p(t_i) = (1/dt) D^-1 [ sigma(t_i) - PI_K(sigma(t_i)) ]
+
+        and for von Mises the bracket **is** the radial plastic stress this
+        method already carries: the closest-point projection leaves the
+        hydrostatic part alone and scales the deviator by
+        ``sigma_Y / sigma_eq``, so the difference is exactly
+        ``s (1 - sigma_Y/sigma_eq)``. Checked against
+        :func:`~scion.materials.plasticity.return_map` on 399 yielding states
+        spanning ``sigma_eq/sigma_Y`` up to 8.1, agreeing to **7.2e-16**
+        relative. So the module docstring's "equivalent measure of the plastic
+        strain rate" understates it -- for von Mises it is an identity, and
+        nothing had to be added to the iteration to recover the strain.
+
+        ``D^-1`` rather than ``1/(2 mu)``: the two agree to the bit here
+        because the radial excess is deviatoric, but the general form needs no
+        isotropy assumption and costs one 6x6 solve.
+
+        **The rate scaling is a convention and this module does not use the
+        one above.** Eq. (eq:epsp) carries a ``1/dt``, which drives the
+        residual stress ``n_t`` times harder and therefore converges, as
+        ``dt -> 0``, to a state with ``sigma_p -> 0`` -- the exact plasticity
+        limit, yield enforced pointwise. The 2012 iteration implemented here
+        drives it with ``sigma_p`` itself, so
+
+            eps_dot^p(tau) = D^-1 sigma_p(tau),     tau in [0, 1)
+
+        which is a penalty regularisation with a relaxation time of one cycle.
+        The two agree exactly on where shakedown ends -- ``sigma_p = 0`` is
+        scale-free -- and disagree on the indicators above it. See the
+        ``n_t`` table in :attr:`plastic_strain` before quoting a strain range
+        against the published form.
+        """
+        self._require("plastic_strain_rate")
+        return self.plastic_stress @ self.compliance.T
+
+    @property
+    def plastic_strain(self) -> np.ndarray:
+        r"""``(n_time, n_points, 6)`` plastic strain accumulated over the cycle.
+
+            eps^p_g(t) = INT_0^t eps_dot^p_g(tau) dtau
+
+        on the ``n_t`` samples, so ``dt`` times a running sum. **The ``dt``
+        matters and has to match the rate convention the iteration used** --
+        dropping it, which is what the published ``1/dt`` form would license,
+        makes both indicators below scale with ``n_t`` instead of converging.
+        Measured at ``lambda = 1.20 p_lim`` on the thick cylinder, ``n_t`` =
+        8 / 16 / 32 / 64:
+
+            without dt   1.06e-4  1.49e-4  3.20e-4  6.39e-4   ~2x a doubling
+            with dt      1.33e-5  9.30e-6  1.00e-5  9.98e-6   converged
+
+        and the same at 1.02 p_lim (3.8 / 4.6 / 3.6 / 3.6 e-7). So these are
+        quantities rather than artefacts, but only in the convention their own
+        fixed point was computed in.
+
+        Measured from the first stored cycle point. The cycle here starts at
+        ``tau = 0`` where the published indices start at ``dt``, which is a
+        cyclic shift of the samples; both indicators below are invariant to it
+        (one is a max over all pairs, the other a sum over the whole cycle).
+
+        **Plastic incompressibility is exact, not approximate.** The radial
+        excess is a deviator and ``D^-1`` of a deviator is a deviator, so
+        ``tr(eps^p) = 0`` to round-off (measured 1.3e-18) rather than to a
+        tolerance. A nonzero trace here is a bug.
+        """
+        self._require("plastic_strain")
+        dt = 1.0 / self.plastic_stress.shape[0]
+        return dt * np.cumsum(self.plastic_stress @ self.compliance.T, axis=0)
+
+    @property
+    def plastic_strain_range(self) -> float:
+        r"""``Delta eps^p``: the largest plastic strain range per cycle.
+
+            Delta eps^p = max_g max_{i,j} || eps^p_g(t_i) - eps^p_g(t_j) ||
+
+        **An indicator, not a magnitude.** Zero in the elastic and shakedown
+        regimes, because the cycle then carries no plastic strain at all, and
+        monotone in the load above them -- but its *size* carries the rate
+        scale of the 2012 iteration, which is a free penalty parameter. On the
+        Bree strip at ``x, y = 0, 3`` and ``lambda = 1`` this returns 0.084261
+        against a closed-form 1.0.
+        :func:`~scion.shakedown.bree.cyclic_strip` returns 1.0 to 9.3e-16 on
+        the same problem, and
+        :func:`~scion.shakedown.cyclic_steady_state` is the finite element
+        counterpart. Do not hand this number to a fatigue curve.
+
+        Computed as ``n_t`` passes over the history rather than by forming the
+        full ``(n_points, n_t, n_t)`` Gram array, which reaches 327 MB at
+        10,000 points and 64 cycle samples.
+
+        Note this is a *range*, not an amplitude. Every life curve in
+        :mod:`scion.fatigue` takes an amplitude, so halve it there -- the same
+        factor of two that module is built around.
+        """
+        self._require("plastic_strain_range")
+        return _strain_range(self.plastic_strain)
+
+    @property
+    def ratchet_rate(self) -> float:
+        r"""``r``: the largest net plastic strain per cycle.
+
+            r = max_g || eps^p_g(T) ||
+
+        Zero for alternating plasticity, where the plastic strain reverses and
+        cancels over the cycle, and positive for ratchetting, where it does
+        not. It is the physically meaningful version of the ``1e-3 * peak``
+        heuristic :attr:`state` uses.
+        """
+        self._require("ratchet_rate")
+        net = self.plastic_stress.mean(axis=0) @ self.compliance.T
+        return float(_frobenius(net).max())
+
+    @property
+    def plastic_strain_scale(self) -> float:
+        """``sigma_0 / (2 mu)``, the shear yield strain -- a scale to read
+        :attr:`ratchet_rate` and :attr:`plastic_strain_range` against.
+
+        They are absolute strains, so a bare tolerance on them is not
+        transferable between materials. The last diagonal entry of the
+        compliance is ``1/(2 mu)`` in Mandel -- all three shear slots carry it
+        -- and ``1/E`` for a one-component model such as the Bree strip, which
+        is why it is indexed from the end rather than at ``[3, 3]``.
+        """
+        self._require("plastic_strain_scale")
+        return float(self.sigma_0 * self.compliance[-1, -1])
+
+    @property
+    def cyclic_amplitude(self) -> float:
+        r"""``A``: the normalised amplitude of the cyclic residual stress.
+
+            A = (1/sigma_0) ( sum_k ||a_k||_W^2 + ||b_k||_W^2 )^{1/2}
+
+        with ``||x||_W = (x^T W x)^{1/2}`` over the Gauss-point integration
+        weights. Zero in the elastic and shakedown regimes.
+
+        **Not the same quantity as** :attr:`phi`, which is an *unweighted* sum
+        of Frobenius norms and so depends on the mesh through the point count
+        rather than through the volume each point represents. ``phi`` is kept
+        because the 2012 convergence test is written on it; ``A`` is the one to
+        report, and the one a first-passage search should bisect.
+        """
+        self._require("cyclic_amplitude")
+        if self.weights is None:
+            raise ValueError("cyclic_amplitude needs the integration weights")
+        w = self.weights[None, :, None]
+        total = float((w * self.a ** 2).sum() + (w * self.b ** 2).sum())
+        return np.sqrt(total) / self.sigma_0
+
+    def regime(self, eta_a: float = 1.0e-6,
+               eta_r: float = 1.0e-6) -> str:
+        """Which of the four regimes, by the indicators rather than by
+        :attr:`state`'s heuristic.
+
+        ``eta_a`` is absolute (``A`` is already normalised by ``sigma_0``);
+        ``eta_r`` is relative to :attr:`plastic_strain_scale`, since ``r`` is
+        an absolute strain.
+
+        ``elastic`` and ``shakedown`` are separated by whether a residual
+        stress field developed at all -- both carry zero plastic strain in the
+        asymptotic cycle, so the indicators alone cannot tell them apart. The
+        published route is to compare against ``lambda_el`` from the elastic
+        solution; this is the equivalent statement made from the converged
+        cycle, and :func:`~scion.shakedown.elastic_factor` is the other one.
+        """
+        if self.ratchet_rate > eta_r * self.plastic_strain_scale:
+            return "ratchetting"
+        if self.cyclic_amplitude > eta_a:
+            return "alternating"
+        if np.abs(self.constant_residual).max() <= 1e-12 * self.scale:
+            return "elastic"
+        return "shakedown"
 
     @property
     def state(self) -> str:
@@ -369,9 +676,15 @@ def rsdm(elastic_history: np.ndarray, tables, free_dofs, C_mandel, sigma_y,
 
     phi = float(np.linalg.norm(a, axis=(1, 2)).sum()
                 + np.linalg.norm(b, axis=(1, 2)).sum())
+    # the compliance is what turns the stored plastic stress back into a
+    # plastic strain, and the weights are what make ``A`` a volume-weighted
+    # norm rather than a point-count-weighted one
     return RSDMResult(a0=a0, a=a, b=b, residual=rho, plastic_stress=plastic,
                       iterations=iteration, converged=converged, phi=phi,
-                      scale=float(np.max(yield_stress)))
+                      scale=float(np.max(yield_stress)),
+                      compliance=np.linalg.inv(C),
+                      weights=np.asarray(tables.w, dtype=float).ravel(),
+                      sigma_0=float(np.mean(yield_stress)))
 
 
 # ---------------------------------------------------------------------------

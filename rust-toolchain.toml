@@ -4,5 +4,10 @@
 # "can't find crate for `std`".
 [toolchain]
 channel = "1.90.0"
-components = ["rustfmt", "clippy"]
+# rust-analyzer is pinned with the toolchain because the VS Code extension
+# ships its own, built against a newer compiler than the one pinned here,
+# and warns that it cannot work properly against 1.90.0. Listing the
+# component makes the editor use the matching version; it changes no
+# codegen, so the pin above still reproduces the published kernels.
+components = ["rustfmt", "clippy", "rust-analyzer"]
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]

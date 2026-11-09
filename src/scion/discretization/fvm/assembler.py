@@ -167,6 +167,20 @@ class FVMAssembler(DiscretizationBase):
         """
         return peclet_limit(self.velocity[d], self.diffusivity, self.h[d])
 
+    def _resolve_velocity(self, velocity):
+        """Per-direction velocity for one call: ``None`` means the stored one.
+
+        An override is constant **within** the call. That is enough for the
+        probability density evolution method, whose GDEE advects at a speed
+        that depends on time but not on space and which the scheme freezes at
+        the step midpoint; a velocity varying *inside* a step would have to
+        arrive as a callable of the stage time, which nothing needs yet.
+        """
+        if velocity is None:
+            return self.velocity
+        return tuple(float(x) for x in np.broadcast_to(
+            np.asarray(velocity, dtype=float), (self.dim,)))
+
     # ------------------------------------------------------------------
     def total(self, u) -> float:
         """``sum u_i V_i`` -- the quantity the method conserves exactly."""
@@ -243,7 +257,8 @@ class FVMAssembler(DiscretizationBase):
         return (v[..., 1:n + 2] + slope[..., :n + 1],
                 v[..., 2:n + 3] - slope[..., 1:n + 2])
 
-    def _faces(self, trimmed: np.ndarray, d: int, width: int) -> np.ndarray:
+    def _faces(self, trimmed: np.ndarray, d: int, width: int,
+               velocity) -> np.ndarray:
         """Total flux at the ``n + 1`` faces along ``d``.
 
         ``trimmed`` carries ghosts along ``d`` only, and every boundary
@@ -259,7 +274,7 @@ class FVMAssembler(DiscretizationBase):
         else:
             left, right = v[..., :-1], v[..., 1:]
 
-        face = self.flux(left, right, np.full(left.shape, self.velocity[d]))
+        face = self.flux(left, right, np.full(left.shape, velocity[d]))
 
         if self.diffusivity != 0.0:
             inner = v[..., width - 1:width + n + 1]
@@ -267,8 +282,10 @@ class FVMAssembler(DiscretizationBase):
 
         return np.moveaxis(face, -1, self._axis[d])
 
-    def _divergence(self, u: np.ndarray, conditions, width: int) -> np.ndarray:
+    def _divergence(self, u: np.ndarray, conditions, width: int,
+                    velocity=None) -> np.ndarray:
         """``-div F``: the right-hand side of ``du/dt``, shaped like ``u``."""
+        velocity = self._resolve_velocity(velocity)
         u = np.asarray(u, dtype=float)
         padded = self._pad(u, conditions, width)
         out = np.zeros(u.shape)
@@ -281,28 +298,32 @@ class FVMAssembler(DiscretizationBase):
                     trimmed = np.take(
                         trimmed, range(width, trimmed.shape[axis] - width),
                         axis=axis)
-            face = self._faces(trimmed, d, width)
+            face = self._faces(trimmed, d, width, velocity)
             out = out - np.diff(face, axis=self._axis[d]) / self.h[d]
         return out
 
     # ------------------------------------------------------------------
     # Explicit time stepping
     # ------------------------------------------------------------------
-    def divergence(self, u, conditions=None) -> np.ndarray:
-        """``-div F`` with MUSCL reconstruction: second order where smooth."""
+    def divergence(self, u, conditions=None, velocity=None) -> np.ndarray:
+        """``-div F`` with MUSCL reconstruction: second order where smooth.
+
+        ``velocity`` overrides the stored one for this call alone.
+        """
         conditions = conditions or self.default_conditions()
         u = np.asarray(u, dtype=float).reshape(self.grid_shape)
-        return self._divergence(u, conditions, width=2)
+        return self._divergence(u, conditions, width=2, velocity=velocity)
 
-    def boundary_flux(self, u, conditions=None) -> float:
+    def boundary_flux(self, u, conditions=None, velocity=None) -> float:
         """Net outflow through the domain boundary, per unit time.
 
         The only route by which :meth:`total` can change; comparing the two is
         the conservation check.
         """
-        return -float(np.sum(self.divergence(u, conditions)) * self.cell_volume)
+        return -float(np.sum(self.divergence(u, conditions, velocity))
+                      * self.cell_volume)
 
-    def stable_dt(self, cfl: float = 0.4) -> float:
+    def stable_dt(self, cfl: float = 0.4, velocity=None) -> float:
         """Largest stable explicit step, advective and diffusive limits
         together.
 
@@ -310,14 +331,15 @@ class FVMAssembler(DiscretizationBase):
         one scales as ``h``, so on a fine enough mesh diffusion sets the step
         no matter how small the diffusivity is.
         """
-        rate = sum(abs(self.velocity[d]) / self.h[d] for d in range(self.dim))
+        velocity = self._resolve_velocity(velocity)
+        rate = sum(abs(velocity[d]) / self.h[d] for d in range(self.dim))
         if self.diffusivity > 0.0:
             rate += 2.0 * self.diffusivity * sum(1.0 / self.h[d] ** 2
                                                  for d in range(self.dim))
         return float(cfl / rate) if rate > 0.0 else float("inf")
 
     def advance(self, u, dt: float, conditions=None,
-                stages: int = 2) -> np.ndarray:
+                stages: int = 2, velocity=None) -> np.ndarray:
         """One explicit step by SSP Runge-Kutta of 1, 2 or 3 stages.
 
         Strong-stability-preserving means every stage is a convex combination
@@ -330,7 +352,7 @@ class FVMAssembler(DiscretizationBase):
         u = np.asarray(u, dtype=float).reshape(self.grid_shape)
 
         def L(w):
-            return self._divergence(w, conditions, width=2)
+            return self._divergence(w, conditions, width=2, velocity=velocity)
 
         if stages == 1:
             return u + dt * L(u)
@@ -344,15 +366,15 @@ class FVMAssembler(DiscretizationBase):
         raise ValueError("SSP Runge-Kutta is implemented for 1, 2 or 3 stages")
 
     def solve_unsteady(self, u0, t_end: float, conditions=None,
-                       cfl: float = 0.4, stages: int = 2):
+                       cfl: float = 0.4, stages: int = 2, velocity=None):
         """Integrate to ``t_end``; returns ``(field, n_steps)``."""
         conditions = conditions or self.default_conditions()
         u = np.asarray(u0, dtype=float).reshape(self.grid_shape).copy()
-        dt_max = self.stable_dt(cfl)
+        dt_max = self.stable_dt(cfl, velocity)
         t, steps = 0.0, 0
         while t < t_end - 1e-14:
             dt = min(dt_max, t_end - t)
-            u = self.advance(u, dt, conditions, stages)
+            u = self.advance(u, dt, conditions, stages, velocity)
             t += dt
             steps += 1
         return u, steps

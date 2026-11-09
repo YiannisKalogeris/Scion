@@ -7,6 +7,8 @@ Forward UQ: pushing a distribution through the model.
     variance_reduction   control variates, importance sampling, stratification
     reliability          failure probability: crude, FORM, importance sampling,
                          subset simulation
+    random_field         truncated Karhunen-Loeve expansion of a
+                         stationary field, as modal coefficients
     sensitivity          Sobol first-order and total indices
     reference            Ishigami and the linear limit state, with the exact
                          answers every method here is tested against
@@ -59,6 +61,8 @@ from scion.uq.forward.reliability import (
     required_samples,
     subset_simulation,
 )
+from scion.uq.forward.random_field import (KERNEL_REGISTRY, KarhunenLoeve,
+                                           LogNormalField)
 from scion.uq.forward.sensitivity import SobolResult, sobol_indices
 from scion.uq.forward.variance_reduction import (
     ControlVariateResult,
@@ -98,6 +102,10 @@ __all__ = [
     "importance_sampling_probability",
     "subset_simulation",
     "required_samples",
+    # random fields
+    "KarhunenLoeve",
+    "LogNormalField",
+    "KERNEL_REGISTRY",
     # sensitivity
     "sobol_indices",
     "SobolResult",
