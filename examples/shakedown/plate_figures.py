@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 import matplotlib
@@ -34,6 +35,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Patch, Rectangle
+from matplotlib.tri import Triangulation
 
 from scion.uq.density import RepresentativePoints
 
@@ -46,21 +48,60 @@ SEQUENTIAL = "viridis"
 RESULTS = Path(__file__).parent / "results"
 
 
-def _triangulation(xq):
-    """A triangulation of the quadrature points with the hole cut out.
+@lru_cache(maxsize=4)
+def _mesh(mesh: int):
+    """The quarter-plate mesh and the operators that read a field off it."""
+    from scion.discretization.fem.tables import QuadratureTables
 
-    ``tricontourf`` on scattered points triangulates their *convex hull*,
-    which here spans the hole and paints it with interpolated values that
-    exist nowhere. Triangles whose centroid falls inside the hole are masked;
-    the outer boundary needs no treatment because the hull is already inside
-    the square, inset by half an element.
+    domain = quarter_plate(mesh, mesh)
+    return domain, QuadratureTables(domain, thickness=1.0)
+
+
+def _field(mesh: int, xq: np.ndarray, values: np.ndarray):
+    """A quadrature field as a triangulation over the plate's own boundary.
+
+    ``tricontourf`` on the quadrature points alone paints their convex
+    *hull*, and with a mesh graded towards the hole that hull is not the
+    plate: the inset is half an element, 0.6% of L next to the hole against
+    4.8% at the outer edges, so the hull leans from one to the other --
+    measured, its left edge runs from (0.006, 0.110) to (0.054, 0.952) --
+    and the outer corner is cut by a chord between (0.866, 0.951) and
+    (0.951, 0.866). The drawn domain then disagrees with the mesh in
+    Fig. 7(a) and stops 5% short of the two loaded edges.
+
+    The fix is to add the mesh *nodes* as data sites, which puts the corners
+    and the hole boundary on the hull, and to carry the quadrature values
+    themselves unchanged -- recovering onto the nodes alone would be the
+    standard thing and loses the peak the map exists to show, since the
+    recovery is an average: the activity map's maximum falls from 1.000 to
+    0.976, i.e. from "yields in every realization" to not.
+
+    A node takes the weighted average of the quadrature values around it,
+    ``u_I = sum_q w_q N_qI v_q / sum_q w_q N_qI``, the lumped form of the L2
+    projection. It is a convex combination, so a node cannot leave the range
+    of the data -- the consistent projection can, and would put the activity
+    map outside [0, 1] where its front is sharp, which a fixed set of contour
+    levels then leaves unpainted. Triangles across the hole are masked by
+    their centroid, as before; nothing has to be done at the outer boundary.
     """
-    from matplotlib.tri import Triangulation
+    domain, tables = _mesh(mesh)
+    nodes = domain.coordinates
+    # the archive carries the points but not the mesh they came from; this is
+    # the check that the two are the same object
+    here = np.stack([tables.interpolate(nodes[:, 0]),
+                     tables.interpolate(nodes[:, 1])], axis=1)
+    if here.shape != xq.shape or not np.allclose(here, xq, rtol=0, atol=1e-12):
+        raise SystemExit("the archive's quadrature points are not this mesh's")
 
-    tri = Triangulation(xq[:, 0], xq[:, 1])
-    centroids = xq[tri.triangles].mean(axis=1)
+    v = np.asarray(values, dtype=float).reshape(tables.w.shape)
+    n_nodes = nodes.shape[0]
+    nodal = tables.load(v, n_nodes) / tables.load(np.ones_like(v), n_nodes)
+
+    points = np.vstack([nodes, np.asarray(xq, dtype=float)])
+    tri = Triangulation(points[:, 0], points[:, 1])
+    centroids = points[tri.triangles].mean(axis=1)
     tri.set_mask(np.hypot(centroids[:, 0], centroids[:, 1]) < R_HOLE)
-    return tri
+    return tri, np.concatenate([nodal, v.ravel()])
 
 
 def _load(quick: bool) -> dict:
@@ -143,8 +184,8 @@ def figure_model(out: Path, archive: dict, quick: bool) -> None:
         kl = KarhunenLoeve.from_points(xq, w, ell, n_modes=int(archive[f"{tag}_modes"]))
         field = LogNormalField(kl, mean=YIELD, cov=YIELD_COV)
         values = field.realize(rng.standard_normal(kl.n_modes))
-        tp = ax.tricontourf(_triangulation(xq), values, levels=14,
-                            cmap=SEQUENTIAL)
+        tri, nodal = _field(mesh, xq, values)
+        tp = ax.tricontourf(tri, nodal, levels=14, cmap=SEQUENTIAL)
         ax.add_patch(plt.Circle((0, 0), R_HOLE, facecolor="white", zorder=3,
                                 edgecolor=INK_2, lw=0.6))
         ax.set_aspect("equal"); ax.axis("off")
@@ -262,6 +303,7 @@ def figure_activity(out: Path, archive: dict, quick: bool) -> None:
     w = archive["weights"]
     lam = float(archive["activity_lambda"])
     area = float(w[prob > 0].sum() / w.sum())
+    tri, nodal = _field(int(archive["mesh"]), xq, prob)
 
     # the plastic zone is a few percent of the area and sits entirely at the
     # hole, so the whole quarter plate is almost all zero -- the second panel
@@ -270,7 +312,7 @@ def figure_activity(out: Path, archive: dict, quick: bool) -> None:
     levels = np.linspace(0.0, 1.0, 11)
     zoom = 4.5 * R_HOLE
     for ax, limit, label in ((axes[0], None, "a"), (axes[1], zoom, "b")):
-        tp = ax.tricontourf(_triangulation(xq), prob, levels=levels,
+        tp = ax.tricontourf(tri, nodal, levels=levels,
                             cmap=SEQUENTIAL, vmin=0.0, vmax=1.0)
         ax.add_patch(plt.Circle((0, 0), R_HOLE, facecolor="white", zorder=3,
                                 edgecolor=INK_2, lw=0.6))

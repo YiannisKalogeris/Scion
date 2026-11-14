@@ -1,0 +1,10 @@
+[package]
+name = "scion-sph"
+version = "0.1.0"
+edition = "2021"
+description = "Two-dimensional SPH kernels, neighbour search and diffusion, with no Python in the loop"
+license = "Apache-2.0"
+
+[dependencies]
+
+[dev-dependencies]

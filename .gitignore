@@ -17,6 +17,15 @@ target/
 # staging area for code being merged into src/
 _incoming/
 
+# Everything the SPH examples draw. `*.vtu` and `*.pvd` above already cover
+# the ParaView series -- 5.8 MB for 58 frames of 8000 particles, and linear
+# in both -- and this covers the figures and the animations beside them.
+# They are outputs of `python -m examples.sph.<case>`, regenerated in seconds
+# from code that is tracked, which is the same argument the .npz rule makes.
+# NOTE this diverges from examples/{damage,fatigue,fdm,fem,fvm}/results/,
+# which do track their figures; delete this rule to match them.
+examples/sph/results/
+
 # solver output re-read by the plotting scripts, not source. tension_data.npz
 # is 20 MB; it exists so a three-hour run can be re-plotted without re-running,
 # which is worth having on disk and not in the history.
